@@ -105,7 +105,7 @@
                             <th class="p-4 text-left font-semibold">交易對</th>
                             <th class="p-4 text-right font-semibold">即時 APR</th>
                             <th class="p-4 text-right font-semibold">3日平均 APR <span class="text-[10px] text-yellow-500">NEW</span></th>
-                            <th class="p-4 text-right font-semibold">時費率</th>
+                            <th class="p-4 text-right font-semibold">即時費率 (%)</th>
                             <th class="p-4 text-center font-semibold">策略建議</th>
                         </tr>
                     </thead>
@@ -151,13 +151,18 @@
             const cache = getHistoryCache();
             const now = Date.now();
             
-            if (!cache[symbol] || (now - cache[symbol].ts > 3600000)) {
-                // 每小時微調一次平均值，使其看起來有趨勢感
-                const drift = (Math.random() - 0.5) * 0.2; // +/- 10% 抖動
+            if (!cache[symbol]) {
+                // 首次抓取，初始化平均值
                 cache[symbol] = {
-                    avg: currentApr * (0.9 + drift),
+                    avg: currentApr,
                     ts: now
                 };
+                saveHistoryCache(cache);
+            } else if (now - cache[symbol].ts > 3600000) {
+                // 每小時更新一次移動平均 (Exponential Moving Average 邏輯)
+                // 權重：舊平均 70%, 新費率 30%
+                cache[symbol].avg = (cache[symbol].avg * 0.7) + (currentApr * 0.3);
+                cache[symbol].ts = now;
                 saveHistoryCache(cache);
             }
             return cache[symbol].avg;
