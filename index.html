@@ -47,7 +47,7 @@
             <div class="flex items-center gap-3">
                 <div class="bg-yellow-500 text-black p-2 rounded-lg font-bold text-xl">K</div>
                 <div>
-                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v2.8.4</span></h1>
+                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v2.9.1</span></h1>
                     <div id="last-update" class="text-xs text-gray-500">正在掃描全球市場... (API 實時聯動版)</div>
                 </div>
             </div>
@@ -132,13 +132,10 @@
             <div class="bg-[#1e2329] w-full max-w-5xl max-h-[90vh] rounded-xl border border-gray-700 shadow-2xl overflow-hidden flex flex-col">
                 <div class="p-6 border-b border-gray-800 flex justify-between items-center">
                     <h3 class="text-xl font-bold flex items-center gap-3">
-                        <span class="text-blue-500">📊</span> 實時倉位與資費監控 <span class="text-[10px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded">v2.8</span>
+                        <span class="text-blue-500">📊</span> 實時倉位與資費監控 <span class="text-[10px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded">v2.9.1</span>
                         <span id="pos-refresh-timer" class="text-[10px] font-normal text-gray-500 bg-gray-800 px-2 py-1 rounded ml-4 uppercase tracking-widest">10s 自動刷新</span>
                     </h3>
                     <div class="flex items-center gap-4">
-                        <div id="account-balances" class="flex gap-4 text-xs">
-                            <!-- Balances injected here -->
-                        </div>
                         <button onclick="closePositionModal()" class="text-gray-400 hover:text-white text-2xl ml-4">&times;</button>
                     </div>
                 </div>
@@ -252,7 +249,7 @@
         </div>
 
         <footer class="mt-8 text-center text-gray-600 text-[10px]">
-            數據每 60 秒自動同步 • 版本 v2.8.4 (UI 版面對齊版) • APR 以 8 小時 / 1 小時費率復合計算
+            數據每 60 秒自動同步 • 版本 v2.9.1 (財務對帳對齊版) • APR 以 8 小時 / 1 小時費率復合計算
         </footer>
     </div>
 
@@ -768,25 +765,16 @@
                     return;
                 }
 
-                // Render Balances
-                const mexcBal = (data.balances && data.balances.mexc) ? data.balances.mexc.toFixed(2) : "0.00";
-                const bnbBal = (data.balances && data.balances.binance) ? data.balances.binance.toFixed(2) : "0.00";
-                
-                balanceEl.innerHTML = `
-                    <div class="text-right"><p class="text-gray-500 uppercase">MEXC</p><p class="font-bold text-yellow-500">${mexcBal} U</p></div>
-                    <div class="text-right"><p class="text-gray-500 uppercase">Binance</p><p class="font-bold text-yellow-500">${bnbBal} U</p></div>
-                `;
-
                 // Render Positions Table
                 let html = `
                     <table class="w-full text-sm text-left">
                         <thead>
                             <tr class="text-gray-500 text-[10px] uppercase border-b border-gray-800">
                                 <th class="pb-2">幣種</th>
-                                <th class="pb-2">現貨持倉</th>
-                                <th class="pb-2">合約持倉</th>
-                                <th class="pb-2 text-right">實時資費 / APR</th>
-                                <th class="pb-2 text-right">即時基差 (Spread)</th>
+                                <th class="pb-2">持倉詳情 (現貨/合約)</th>
+                                <th class="pb-2 text-right">已賺資費</th>
+                                <th class="pb-2 text-right">手續費</th>
+                                <th class="pb-2 text-right">倉位盈虧</th>
                                 <th class="pb-2 text-right">總盈虧 (Total PNL)</th>
                             </tr>
                         </thead>
@@ -794,41 +782,40 @@
                 `;
 
                 data.positions.forEach(p => {
-                    const spreadColor = p.spreadPercent >= 0 ? 'text-green-400' : 'text-red-400';
-                    const pnlColor = p.totalPnl >= 0 ? 'text-green-400' : 'text-red-400';
-                    const spotPnlColor = p.spot.unrealizedPnl >= 0 ? 'text-green-400/70' : 'text-red-400/70';
-                    const futurePnlColor = p.future.unrealizedPnl >= 0 ? 'text-green-400/70' : 'text-red-400/70';
+                    const posPnlColor = p.positionPnl >= 0 ? 'text-green-400' : 'text-red-400';
+                    const totalPnlColor = p.totalPnl >= 0 ? 'text-green-400' : 'text-red-400';
                     
                     html += `
                         <tr class="table-row">
-                            <td class="py-4 font-bold text-lg mono">${p.symbol}</td>
                             <td class="py-4">
-                                <div class="flex items-center gap-2">
-                                    <span class="badge ${getPlatformColor(p.spot.platform)}">${p.spot.platform}</span>
-                                    <span class="font-bold mono text-gray-200">${p.spot.amount.toFixed(4)}</span>
-                                </div>
-                                <div class="text-[10px] text-gray-500">Cost: $${p.spot.avgCost > 0 ? p.spot.avgCost.toFixed(4) : '--'} | Price: $${p.spot.price.toFixed(4)}</div>
-                                <div class="text-[9px] ${spotPnlColor}">PNL: $${p.spot.unrealizedPnl.toFixed(2)}</div>
+                                <div class="font-bold text-lg mono">${p.symbol}</div>
+                                <div class="text-[10px] font-bold text-green-400 mono">${(p.funding.rate * 100).toFixed(4)}%</div>
+                                <div class="text-[9px] text-gray-500 uppercase">APR: ${p.funding.apr.toFixed(2)}%</div>
                             </td>
                             <td class="py-4">
-                                <div class="flex items-center gap-2">
-                                    <span class="badge ${getPlatformColor(p.future.platform)}">${p.future.platform}</span>
-                                    <span class="font-bold mono ${p.future.amount < 0 ? 'text-red-400' : 'text-green-400'}">${p.future.amount.toFixed(4)}</span>
+                                <div class="flex flex-col gap-1">
+                                    <div class="flex items-center gap-2">
+                                        <span class="badge ${getPlatformColor(p.spot.platform)}">SPOT</span>
+                                        <span class="mono text-gray-200 text-xs">${p.spot.amount.toFixed(2)} @ $${p.spot.avgCost > 0 ? p.spot.avgCost.toFixed(4) : '--'}</span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="badge ${getPlatformColor(p.future.platform)}">FUTU</span>
+                                        <span class="mono ${p.future.amount < 0 ? 'text-red-400' : 'text-green-400'} text-xs">${p.future.amount.toFixed(2)} @ $${p.future.entryPrice.toFixed(4)}</span>
+                                    </div>
                                 </div>
-                                <div class="text-[10px] text-gray-500">Price: $${p.future.currentPrice.toFixed(4)} | Value: $${p.future.value.toFixed(2)}</div>
-                                <div class="text-[9px] ${futurePnlColor}">PNL: $${p.future.unrealizedPnl.toFixed(2)}</div>
+                            </td>
+                            <td class="py-4 text-right mono text-green-400 font-bold">
+                                $${p.fundingEarned.toFixed(2)}
+                            </td>
+                            <td class="py-4 text-right mono text-gray-400">
+                                $${p.totalFees.toFixed(2)}
+                            </td>
+                            <td class="py-4 text-right mono ${posPnlColor}">
+                                $${p.positionPnl.toFixed(2)}
                             </td>
                             <td class="py-4 text-right">
-                                <div class="font-bold mono text-green-400">${(p.funding.rate * 100).toFixed(4)}%</div>
-                                <div class="text-[10px] text-gray-500 font-bold">APR: ${p.funding.apr.toFixed(2)}%</div>
-                            </td>
-                            <td class="py-4 text-right">
-                                <div class="font-bold mono ${spreadColor}">${(p.spreadPercent).toFixed(4)}%</div>
-                                <div class="text-[10px] text-gray-500">$${p.spread.toFixed(4)}</div>
-                            </td>
-                            <td class="py-4 text-right">
-                                <div class="font-bold mono ${pnlColor} text-lg">$${p.totalPnl.toFixed(2)}</div>
-                                <div class="text-[9px] text-gray-500 uppercase">Hedge Total</div>
+                                <div class="font-bold mono ${totalPnlColor} text-lg">$${p.totalPnl.toFixed(2)}</div>
+                                <div class="text-[9px] text-gray-500 uppercase">Financial PNL</div>
                             </td>
                         </tr>
                     `;
