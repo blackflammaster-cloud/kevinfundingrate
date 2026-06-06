@@ -47,7 +47,7 @@
             <div class="flex items-center gap-3">
                 <div class="bg-yellow-500 text-black p-2 rounded-lg font-bold text-xl">K</div>
                 <div>
-                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v2.12</span></h1>
+                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v2.13</span></h1>
                     <div id="last-update" class="text-xs text-gray-500">正在掃描全球市場... (API 實時聯動版)</div>
                 </div>
             </div>
@@ -280,7 +280,7 @@
         </div>
 
         <footer class="mt-8 text-center text-gray-600 text-[10px]">
-            數據每 60 秒自動同步 • 版本 v2.12 (開倉熔斷預警版) • APR 以 8 小時 / 1 小時費率復合計算
+            數據每 60 秒自動同步 • 版本 v2.13 (閃電自檢與併發加速版) • APR 以 8 小時 / 1 小時費率復合計算
         </footer>
     </div>
 
@@ -910,53 +910,37 @@
 
         async function pollPrices(symbol, platform) {
             try {
+                const ts = Date.now();
+                const btn = document.getElementById('confirm-trade-btn');
+                const errorEl = document.getElementById('modal-error');
+                const isModalOpen = !document.getElementById('trade-modal').classList.contains('hidden');
+
+                // v2.13: 併發請求 (Concurrent Requests) 以極速提升響應
+                const promises = [
+                    // 1. Fetch MEXC Spot Price
+                    proxyFetch(`https://api.mexc.com/api/v3/ticker/price?symbol=${symbol}USDT&t=${ts}`),
+                    
+                    // 2. Fetch Future Price based on platform
+                    platform === 'Aster' ? proxyFetch(`https://fapi.asterdex.com/fapi/v1/ticker/price?symbol=${symbol}USDT&t=${ts}`) :
+                    platform === 'Binance' ? proxyFetch(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${symbol}USDT&t=${ts}`) :
+                    platform === 'Lighter' ? proxyFetch(`https://mainnet.zklighter.elliot.ai/api/v1/orderbook?symbol=${symbol}&t=${ts}`) : Promise.resolve(null),
+                    
+                    // 3. Fetch Margin (僅 Modal 開啟時)
+                    (isModalOpen) ? fetch(`https://volt-judgment-tones-try.trycloudflare.com/margin?platform=${platform}&token=kevin_hedge_9988`).then(r => r.json()).catch(() => null) : Promise.resolve(null)
+                ];
+
+                const [mexcData, futureData, marginData] = await Promise.all(promises);
+
+                // --- 處理價格 ---
                 let spotPrice = 0;
                 let futurePrice = 0;
-                const ts = Date.now();
 
-                // v2.12: Fetch Margin (只在 Modal 開啟時)
-                if (document.getElementById('trade-modal').classList.contains('hidden') === false) {
-                    const marginData = await fetch(`https://volt-judgment-tones-try.trycloudflare.com/margin?platform=${platform}&token=kevin_hedge_9988`).then(r => r.json()).catch(() => null);
-                    if (marginData && marginData.available !== undefined) {
-                        const available = parseFloat(marginData.available);
-                        const amount = parseFloat(document.getElementById('trade-amount').value || 0);
-                        const required = amount / 5; // 假設 5x
-                        
-                        document.getElementById('modal-margin-value').innerText = `$${available.toFixed(2)}`;
-                        document.getElementById('modal-margin-required').innerText = `$${required.toFixed(2)} USDT`;
-                        
-                        const btn = document.getElementById('confirm-trade-btn');
-                        const errorEl = document.getElementById('modal-error');
-
-                        if (available < required) {
-                            document.getElementById('modal-margin-value').className = "text-sm font-bold text-red-400";
-                            errorEl.innerText = `⚠️ 保證金不足！當前 $${available.toFixed(2)} < 需求 $${required.toFixed(2)}。下單按鈕已暫時禁用，以防止單邊成交。`;
-                            errorEl.classList.remove('hidden');
-                            btn.disabled = true;
-                            btn.classList.add('opacity-50', 'cursor-not-allowed');
-                        } else {
-                            document.getElementById('modal-margin-value').className = "text-sm font-bold text-green-400";
-                            errorEl.classList.add('hidden');
-                            btn.disabled = false;
-                            btn.classList.remove('opacity-50', 'cursor-not-allowed');
-                        }
-                    }
-                }
-
-                // 1. Fetch MEXC Spot Price (v2.11: with cache buster)
-                const mexcData = await proxyFetch(`https://api.mexc.com/api/v3/ticker/price?symbol=${symbol}USDT&t=${ts}`);
                 if (mexcData?.price) spotPrice = parseFloat(mexcData.price);
-
-                // 2. Fetch Future Price based on platform (v2.11: with cache buster)
-                if (platform === 'Aster') {
-                    const asterData = await proxyFetch(`https://fapi.asterdex.com/fapi/v1/ticker/price?symbol=${symbol}USDT&t=${ts}`);
-                    if (asterData?.price) futurePrice = parseFloat(asterData.price);
-                } else if (platform === 'Binance') {
-                    const binanceData = await proxyFetch(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${symbol}USDT&t=${ts}`);
-                    if (binanceData?.price) futurePrice = parseFloat(binanceData.price);
-                } else if (platform === 'Lighter') {
-                    const lighterData = await proxyFetch(`https://mainnet.zklighter.elliot.ai/api/v1/orderbook?symbol=${symbol}&t=${ts}`);
-                    if (lighterData?.asks?.[0]?.[0]) futurePrice = parseFloat(lighterData.asks[0][0]);
+                
+                if (platform === 'Lighter') {
+                    if (futureData?.asks?.[0]?.[0]) futurePrice = parseFloat(futureData.asks[0][0]);
+                } else {
+                    if (futureData?.price) futurePrice = parseFloat(futureData.price);
                 }
 
                 if (spotPrice) document.getElementById('modal-spot-price').innerText = spotPrice.toFixed(6);
@@ -976,8 +960,35 @@
                         document.getElementById('trade-tp').value = (futurePrice * 0.7).toFixed(6);
                     }
                 }
+
+                // --- 處理保證金 (v2.13 優化) ---
+                if (isModalOpen && marginData && marginData.available !== undefined) {
+                    const available = parseFloat(marginData.available);
+                    const amount = parseFloat(document.getElementById('trade-amount').value || 0);
+                    const required = amount / 5; // 假設 5x
+                    
+                    document.getElementById('modal-margin-value').innerText = `$${available.toFixed(2)}`;
+                    document.getElementById('modal-margin-required').innerText = `$${required.toFixed(2)} USDT`;
+                    
+                    if (available < required) {
+                        document.getElementById('modal-margin-value').className = "text-sm font-bold text-red-400";
+                        errorEl.innerText = `⚠️ 保證金不足！當前 $${available.toFixed(2)} < 需求 $${required.toFixed(2)}。下單按鈕已暫時禁用。`;
+                        errorEl.classList.remove('hidden');
+                        btn.disabled = true;
+                        btn.classList.add('opacity-50', 'cursor-not-allowed');
+                    } else {
+                        document.getElementById('modal-margin-value').className = "text-sm font-bold text-green-400";
+                        if (!btn.querySelector('#btn-spinner').classList.contains('hidden')) {
+                            // 正在下單中，不操作按鈕
+                        } else {
+                            errorEl.classList.add('hidden');
+                            btn.disabled = false;
+                            btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                        }
+                    }
+                }
             } catch (e) {
-                console.error("Price poll error", e);
+                console.error("Price/Margin poll error", e);
             }
         }
 
