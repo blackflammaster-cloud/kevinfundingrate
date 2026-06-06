@@ -256,11 +256,12 @@
                 return data.funding_rates.map(item => {
                     const rate = parseFloat(item.rate);
                     const apr = rate * 3 * 365 * 100;
+                    const exchange = item.exchange ? `(${item.exchange})` : '';
                     return {
                         platform: 'Lighter',
-                        symbol: item.symbol,
+                        symbol: `${item.symbol}${exchange}`,
                         apr: apr,
-                        avg3d: calculate3dAvg(apr, `Lighter:${item.symbol}`),
+                        avg3d: calculate3dAvg(apr, `Lighter:${item.symbol}:${item.exchange}`),
                         hourly: (rate * 100) / 8
                     };
                 });
