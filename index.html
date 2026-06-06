@@ -47,7 +47,7 @@
             <div class="flex items-center gap-3">
                 <div class="bg-yellow-500 text-black p-2 rounded-lg font-bold text-xl">K</div>
                 <div>
-                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v2.10</span></h1>
+                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v2.11</span></h1>
                     <div id="last-update" class="text-xs text-gray-500">正在掃描全球市場... (API 實時聯動版)</div>
                 </div>
             </div>
@@ -269,7 +269,7 @@
         </div>
 
         <footer class="mt-8 text-center text-gray-600 text-[10px]">
-            數據每 60 秒自動同步 • 版本 v2.10 (風控強化版: SL/TP) • APR 以 8 小時 / 1 小時費率復合計算
+            數據每 60 秒自動同步 • 版本 v2.11 (實時行情校準版) • APR 以 8 小時 / 1 小時費率復合計算
         </footer>
     </div>
 
@@ -887,28 +887,30 @@
             document.getElementById('modal-spread').className = 'mono font-bold text-sm';
 
             // Start price polling
+            // Start price polling (v2.11: 1s interval for real-time)
             pollPrices(cleanSymbol, platform);
-            pricePollInterval = setInterval(() => pollPrices(cleanSymbol, platform), 3000);
+            pricePollInterval = setInterval(() => pollPrices(cleanSymbol, platform), 1000);
         }
 
         async function pollPrices(symbol, platform) {
             try {
                 let spotPrice = 0;
                 let futurePrice = 0;
+                const ts = Date.now();
 
-                // 1. Fetch MEXC Spot Price
-                const mexcData = await proxyFetch(`https://api.mexc.com/api/v3/ticker/price?symbol=${symbol}USDT`);
+                // 1. Fetch MEXC Spot Price (v2.11: with cache buster)
+                const mexcData = await proxyFetch(`https://api.mexc.com/api/v3/ticker/price?symbol=${symbol}USDT&t=${ts}`);
                 if (mexcData?.price) spotPrice = parseFloat(mexcData.price);
 
-                // 2. Fetch Future Price based on platform
+                // 2. Fetch Future Price based on platform (v2.11: with cache buster)
                 if (platform === 'Aster') {
-                    const asterData = await proxyFetch(`https://fapi.asterdex.com/fapi/v1/ticker/price?symbol=${symbol}USDT`);
+                    const asterData = await proxyFetch(`https://fapi.asterdex.com/fapi/v1/ticker/price?symbol=${symbol}USDT&t=${ts}`);
                     if (asterData?.price) futurePrice = parseFloat(asterData.price);
                 } else if (platform === 'Binance') {
-                    const binanceData = await proxyFetch(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${symbol}USDT`);
+                    const binanceData = await proxyFetch(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${symbol}USDT&t=${ts}`);
                     if (binanceData?.price) futurePrice = parseFloat(binanceData.price);
                 } else if (platform === 'Lighter') {
-                    const lighterData = await proxyFetch(`https://mainnet.zklighter.elliot.ai/api/v1/orderbook?symbol=${symbol}`);
+                    const lighterData = await proxyFetch(`https://mainnet.zklighter.elliot.ai/api/v1/orderbook?symbol=${symbol}&t=${ts}`);
                     if (lighterData?.asks?.[0]?.[0]) futurePrice = parseFloat(lighterData.asks[0][0]);
                 }
 
