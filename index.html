@@ -47,7 +47,7 @@
             <div class="flex items-center gap-3">
                 <div class="bg-yellow-500 text-black p-2 rounded-lg font-bold text-xl">K</div>
                 <div>
-                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v2.22</span></h1>
+                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v2.23</span></h1>
                     <div id="last-update" class="text-xs text-gray-500">正在掃描全球市場... (API 實時聯動版)</div>
                 </div>
             </div>
@@ -220,6 +220,15 @@
                             </div>
                         </div>
 
+                        <!-- v2.23 自動保護開關 -->
+                        <div class="flex items-center justify-between bg-yellow-500/5 p-2 rounded-lg border border-yellow-500/20">
+                            <div class="flex items-center gap-2">
+                                <input type="checkbox" id="auto-protect-check" checked class="w-3 h-3 accent-yellow-500 cursor-pointer">
+                                <label for="auto-protect-check" class="text-[10px] text-yellow-500 font-bold cursor-pointer uppercase select-none">自動設置 ±40% 雙端保護</label>
+                            </div>
+                            <span class="text-[9px] text-gray-500 italic">自動對沖策略守護</span>
+                        </div>
+
                         <!-- v2.10 風控組件 -->
                         <div class="grid grid-cols-2 gap-4 pt-2 border-t border-gray-800/50">
                             <div>
@@ -296,7 +305,7 @@
         </div>
 
         <footer class="mt-8 text-center text-gray-600 text-[10px]">
-            數據每 60 秒自動同步 • 版本 v2.22 (Lighter 數據屏蔽版) • APR 以 8 小時 / 1 小時費率復合計算
+            數據每 60 秒自動同步 • 版本 v2.23 (自動雙端保護升級版) • APR 以 8 小時 / 1 小時費率復合計算
         </footer>
     </div>
 
@@ -985,8 +994,11 @@
             }
         }
 
+        let hasAutoFilled = false;
+
         async function openTradeModal(symbol, platform) {
             currentTradeSymbol = symbol;
+            hasAutoFilled = false; // Reset for v2.23
             const cleanSymbol = symbol.split('(')[0].replace('USDT', '');
             document.getElementById('modal-symbol-title').innerText = cleanSymbol;
             document.getElementById('modal-future-name').innerText = platform;
@@ -1077,12 +1089,17 @@
                     spreadEl.innerText = (spread > 0 ? '+' : '') + spread.toFixed(4) + '%';
                     spreadEl.className = `mono font-bold text-sm ${spread >= 0 ? 'text-green-400' : 'text-red-400'}`;
 
-                    // v2.10: 自動建議 SL/TP (Short 方向)
-                    if (!document.getElementById('trade-sl').value) {
-                        document.getElementById('trade-sl').value = (futurePrice * 1.3).toFixed(6);
-                    }
-                    if (!document.getElementById('trade-tp').value) {
-                        document.getElementById('trade-tp').value = (futurePrice * 0.7).toFixed(6);
+                    // v2.23: 全自動雙端保護 (±40%)
+                    if (document.getElementById('auto-protect-check').checked && !hasAutoFilled) {
+                        const slEl = document.getElementById('trade-sl');
+                        const tpEl = document.getElementById('trade-tp');
+                        // 僅在用戶尚未輸入時自動填寫
+                        if (slEl.value === '' && tpEl.value === '') {
+                            slEl.value = (futurePrice * 1.4).toFixed(6); // 合約止損 / 現貨止盈
+                            tpEl.value = (futurePrice * 0.6).toFixed(6); // 合約止盈 / 雲端止損
+                            hasAutoFilled = true;
+                            console.log(`[v2.23] 已自動部署保護位: +40% SL($${slEl.value}), -40% TP($${tpEl.value})`);
+                        }
                     }
                 }
 
