@@ -47,7 +47,7 @@
             <div class="flex items-center gap-3">
                 <div class="bg-yellow-500 text-black p-2 rounded-lg font-bold text-xl">K</div>
                 <div>
-                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v2.19</span></h1>
+                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v2.20</span></h1>
                     <div id="last-update" class="text-xs text-gray-500">正在掃描全球市場... (API 實時聯動版)</div>
                 </div>
             </div>
@@ -131,6 +131,7 @@
                             <th class="p-4 text-left font-semibold">交易對</th>
                             <th class="p-4 text-right font-semibold">即時 APR</th>
                             <th class="p-4 text-right font-semibold">3日平均 APR</th>
+                            <th class="p-4 text-right font-semibold">預估基差 (Spread)</th>
                             <th class="p-4 text-right font-semibold">即時費率 (%)</th>
                             <th class="p-4 text-center font-semibold">快速操作</th>
                         </tr>
@@ -295,7 +296,7 @@
         </div>
 
         <footer class="mt-8 text-center text-gray-600 text-[10px]">
-            數據每 60 秒自動同步 • 版本 v2.19 (全平台實時定價優化版) • APR 以 8 小時 / 1 小時費率復合計算
+            數據每 60 秒自動同步 • 版本 v2.20 (基差實時顯示版) • APR 以 8 小時 / 1 小時費率復合計算
         </footer>
     </div>
 
@@ -548,7 +549,8 @@
                             symbol: asset.name.replace(`${dex}:`, ''),
                             apr: apr,
                             avg3d: calculate3dAvg(apr, `${platformName}:${asset.name}`),
-                            hourly: funding * 100
+                            hourly: funding * 100,
+                            lastPrice: ctx.markPrice ? parseFloat(ctx.markPrice) : 0
                         };
                     }
                     return null;
@@ -570,7 +572,8 @@
                         symbol: sym,
                         apr: apr,
                         avg3d: calculate3dAvg(apr, `Binance:${sym}`),
-                        hourly: (rate * 100) / 8
+                        hourly: (rate * 100) / 8,
+                        lastPrice: parseFloat(item.markPrice)
                     };
                 });
             } catch (e) { return []; }
@@ -589,7 +592,8 @@
                         symbol: sym,
                         apr: apr,
                         avg3d: calculate3dAvg(apr, `Bybit:${sym}`),
-                        hourly: (rate * 100) / 8
+                        hourly: (rate * 100) / 8,
+                        lastPrice: parseFloat(item.lastPrice)
                     };
                 });
             } catch (e) { return []; }
@@ -608,7 +612,8 @@
                         symbol: item.instrument_name,
                         apr: apr,
                         avg3d: calculate3dAvg(apr, `Aevo:${item.instrument_name}`),
-                        hourly: rate * 100
+                        hourly: rate * 100,
+                        lastPrice: parseFloat(item.mark_price)
                     };
                 });
             } catch (e) { return []; }
@@ -627,7 +632,8 @@
                         symbol: item.symbol,
                         apr: apr,
                         avg3d: calculate3dAvg(apr, `Lighter:${item.symbol}:${item.exchange}`),
-                        hourly: rate * 100
+                        hourly: rate * 100,
+                        lastPrice: 0
                     };
                 });
             } catch (e) { return []; }
@@ -655,7 +661,8 @@
                         symbol: sym,
                         apr: apr,
                         avg3d: calculate3dAvg(apr, `Aster:${sym}`),
-                        hourly: (rate * 100) / interval
+                        hourly: (rate * 100) / interval,
+                        lastPrice: parseFloat(item.markPrice || 0)
                     };
                 });
             } catch (e) { return []; }
@@ -675,11 +682,15 @@
                         symbol: item.ticker,
                         apr: apr,
                         avg3d: calculate3dAvg(apr, `Variation:${item.ticker}`),
-                        hourly: (rate * 100) / (interval / 3600)
+                        hourly: (rate * 100) / (interval / 3600),
+                        lastPrice: parseFloat(item.last_price)
                     };
                 }).filter(Boolean);
             } catch (e) { return []; }
         }
+
+        // --- v2.20 Price Cache for Basis ---
+        const priceCache = { mexc: {} };
 
         async function updateDashboard() {
             const lastUpdateEl = document.getElementById('last-update');
@@ -687,7 +698,7 @@
             
             // 首次載入 Loading 狀態
             if (fullData.length === 0) {
-                table.innerHTML = `<tr><td colspan="6" class="p-20 text-center"><div class="flex flex-col items-center gap-4"><div class="loading text-yellow-500 font-bold text-lg">正在獲取全球 9 大平台即時數據...</div><div class="text-xs text-gray-500">掃描 Binance, Bybit, Hyperliquid, Aster...</div></div></td></tr>`;
+                table.innerHTML = `<tr><td colspan="7" class="p-20 text-center"><div class="flex flex-col items-center gap-4"><div class="loading text-yellow-500 font-bold text-lg">正在獲取全球 9 大平台即時數據...</div><div class="text-xs text-gray-500">掃描 Binance, Bybit, Hyperliquid, Aster...</div></div></td></tr>`;
             }
             
             lastUpdateEl.classList.add('loading');
@@ -699,16 +710,36 @@
                 const results = await Promise.allSettled([
                     fetchHL(''), fetchHL('xyz'), fetchHL('hyna'),
                     fetchBinance(), fetchBybit(), fetchAevo(),
-                    fetchLighter(), fetchAster(), fetchVariational()
+                    fetchLighter(), fetchAster(), fetchVariational(),
+                    proxyFetch('https://api.mexc.com/api/v3/ticker/price') 
                 ]);
 
-                // 提取數據並嚴格執行鐵律：1. 嚴禁負費率 2. 1500% 暴力熔斷
-                fullData = results
+                // 處理 MEXC 價格
+                const mexcPrices = results[9]?.status === 'fulfilled' ? results[9].value : [];
+                if (Array.isArray(mexcPrices)) {
+                    mexcPrices.forEach(p => {
+                        if (p.symbol.endsWith('USDT')) {
+                            priceCache.mexc[p.symbol.replace('USDT', '')] = parseFloat(p.price);
+                        }
+                    });
+                }
+
+                // 提取數據並嚴格執行鐵律
+                fullData = results.slice(0, 9)
                     .filter(r => r.status === 'fulfilled')
                     .map(r => r.value)
                     .flat()
                     .filter(Boolean)
-                    .filter(d => d.apr > 0 && d.apr <= 1500) // 核心禁令：過濾負費率與 >1500% 的異常值
+                    .filter(d => d.apr > 0 && d.apr <= 1500) 
+                    .map(d => {
+                        const sPrice = priceCache.mexc[d.symbol] || 0;
+                        const fPrice = d.lastPrice || 0;
+                        let spread = 0;
+                        if (sPrice > 0 && fPrice > 0) {
+                            spread = ((fPrice - sPrice) / sPrice) * 100;
+                        }
+                        return { ...d, spread };
+                    })
                     .sort((a, b) => b.avg3d - a.avg3d);
                 
                 console.log('Data fetched (filtered by Iron Rules):', fullData.length, 'items');
@@ -756,6 +787,12 @@
                 const isPos = item.apr >= 0;
                 const aprClass = isPos ? 'apr-pos' : 'apr-neg';
                 const avgClass = item.avg3d >= 0 ? 'text-red-300' : 'text-green-300';
+                
+                // v2.20 Spread UI
+                const spreadVal = item.spread || 0;
+                const spreadClass = spreadVal >= 0 ? 'text-green-400' : 'text-red-400';
+                const spreadText = spreadVal === 0 ? '--' : `${spreadVal > 0 ? '+' : ''}${spreadVal.toFixed(2)}%`;
+
                 const hasSpot = MEXC_SPOT_LIST.includes(item.symbol.replace('USDT', ''));
                 const spotTag = hasSpot ? '<span class="ml-2 text-[8px] bg-green-500/20 text-green-400 border border-green-500/30 px-1 rounded">SPOT</span>' : '';
 
@@ -765,6 +802,7 @@
                         <td class="p-4 font-bold mono text-sm flex items-center">${item.symbol}${spotTag}</td>
                         <td class="p-4 text-right mono ${aprClass}">${item.apr.toFixed(2)}%</td>
                         <td class="p-4 text-right mono ${avgClass} opacity-80">${item.avg3d.toFixed(2)}%</td>
+                        <td class="p-4 text-right mono ${spreadClass} font-bold">${spreadText}</td>
                         <td class="p-4 text-right mono text-gray-500 text-xs">${item.hourly.toFixed(4)}%</td>
                         <td class="p-4 text-center">
                             <button onclick="handleQuickTrade('${item.symbol}', '${item.platform}', this)" class="bg-gray-800 hover:bg-yellow-500 hover:text-black text-yellow-500 text-[10px] px-3 py-1 rounded border border-yellow-500/30 font-bold transition-all">
