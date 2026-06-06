@@ -47,7 +47,7 @@
             <div class="flex items-center gap-3">
                 <div class="bg-yellow-500 text-black p-2 rounded-lg font-bold text-xl">K</div>
                 <div>
-                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v2.23</span></h1>
+                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v2.24</span></h1>
                     <div id="last-update" class="text-xs text-gray-500">正在掃描全球市場... (API 實時聯動版)</div>
                 </div>
             </div>
@@ -220,13 +220,22 @@
                             </div>
                         </div>
 
-                        <!-- v2.23 自動保護開關 -->
-                        <div class="flex items-center justify-between bg-yellow-500/5 p-2 rounded-lg border border-yellow-500/20">
-                            <div class="flex items-center gap-2">
-                                <input type="checkbox" id="auto-protect-check" checked class="w-3 h-3 accent-yellow-500 cursor-pointer">
-                                <label for="auto-protect-check" class="text-[10px] text-yellow-500 font-bold cursor-pointer uppercase select-none">自動設置 ±40% 雙端保護</label>
+                        <!-- v2.24 雙重自動保護開關 -->
+                        <div class="space-y-2">
+                            <div class="flex items-center justify-between bg-yellow-500/5 p-2 rounded-lg border border-yellow-500/20">
+                                <div class="flex items-center gap-2">
+                                    <input type="checkbox" id="auto-protect-check" checked class="w-3 h-3 accent-yellow-500 cursor-pointer">
+                                    <label for="auto-protect-check" class="text-[10px] text-yellow-500 font-bold cursor-pointer uppercase select-none">自動設置 ±40% 價格保護</label>
+                                </div>
+                                <span class="text-[9px] text-gray-500 italic">防止極端行情</span>
                             </div>
-                            <span class="text-[9px] text-gray-500 italic">自動對沖策略守護</span>
+                            <div class="flex items-center justify-between bg-blue-500/5 p-2 rounded-lg border border-blue-500/20">
+                                <div class="flex items-center gap-2">
+                                    <input type="checkbox" id="funding-protect-check" checked class="w-3 h-3 accent-blue-500 cursor-pointer">
+                                    <label for="funding-protect-check" class="text-[10px] text-blue-500 font-bold cursor-pointer uppercase select-none">資費轉負自動平倉 (2次確認)</label>
+                                </div>
+                                <span class="text-[9px] text-gray-500 italic">防止反向扣費</span>
+                            </div>
                         </div>
 
                         <!-- v2.10 風控組件 -->
@@ -305,7 +314,7 @@
         </div>
 
         <footer class="mt-8 text-center text-gray-600 text-[10px]">
-            數據每 60 秒自動同步 • 版本 v2.23 (自動雙端保護升級版) • APR 以 8 小時 / 1 小時費率復合計算
+            數據每 60 秒自動同步 • 版本 v2.24 (雙重自動守護版) • APR 以 8 小時 / 1 小時費率復合計算
         </footer>
     </div>
 
@@ -1142,6 +1151,7 @@
             const symbol = currentTradeSymbol.split('(')[0].replace('USDT', '');
             const sl = document.getElementById('trade-sl').value;
             const tp = document.getElementById('trade-tp').value;
+            const fundingProtect = document.getElementById('funding-protect-check').checked;
 
             if (!amount || amount <= 0) {
                 errorEl.innerText = "請輸入有效的下單金額";
@@ -1165,7 +1175,8 @@
                         amount: parseFloat(amount),
                         platform: document.getElementById('future-platform-display').innerText,
                         sl: sl ? parseFloat(sl) : null,
-                        tp: tp ? parseFloat(tp) : null
+                        tp: tp ? parseFloat(tp) : null,
+                        protectFunding: fundingProtect
                     })
                 });
                 const result = await response.json();
