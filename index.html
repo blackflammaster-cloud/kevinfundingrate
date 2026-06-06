@@ -47,7 +47,7 @@
             <div class="flex items-center gap-3">
                 <div class="bg-yellow-500 text-black p-2 rounded-lg font-bold text-xl">K</div>
                 <div>
-                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v1.5</span></h1>
+                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v1.6</span></h1>
                     <div id="last-update" class="text-xs text-gray-500">正在掃描全球市場...</div>
                 </div>
             </div>
@@ -423,47 +423,62 @@
 
         async function updateDashboard() {
             const lastUpdateEl = document.getElementById('last-update');
+            const table = document.getElementById('funding-table');
             lastUpdateEl.classList.add('loading');
-
-            // Concurrent fetching for speed
-            const results = await Promise.allSettled([
-                fetchHL(''), fetchHL('xyz'), fetchHL('hyna'),
-                fetchBinance(), fetchBybit(), fetchAevo(),
-                fetchLighter(), fetchAster(), fetchVariational()
-            ]);
-
-            fullData = results
-                .filter(r => r.status === 'fulfilled')
-                .map(r => r.value)
-                .flat()
-                .filter(Boolean)
-                .sort((a, b) => b.apr - a.apr); // 恢復老闆要求的正到負排序
             
-            renderTable();
+            console.log('Starting update...');
 
-            // Background update for critical symbols (e.g. Aster ESPORTS)
-            const esports = fullData.find(d => d.symbol === 'ESPORTS' && d.platform === 'Aster');
-            if (esports) {
-                getTrueHistoryAvg('Aster', 'ESPORTS', esports.apr).then(realAvg => {
-                    esports.avg3d = realAvg;
+            try {
+                // Concurrent fetching for speed
+                const results = await Promise.allSettled([
+                    fetchHL(''), fetchHL('xyz'), fetchHL('hyna'),
+                    fetchBinance(), fetchBybit(), fetchAevo(),
+                    fetchLighter(), fetchAster(), fetchVariational()
+                ]);
+
+                fullData = results
+                    .filter(r => r.status === 'fulfilled')
+                    .map(r => r.value)
+                    .flat()
+                    .filter(Boolean)
+                    .sort((a, b) => b.apr - a.apr);
+                
+                console.log('Data fetched:', fullData.length, 'items');
+                
+                if (fullData.length === 0) {
+                    table.innerHTML = `<tr><td colspan="6" class="p-10 text-center text-gray-500 italic">⚠️ 數據抓取失敗，可能是代理伺服器過載，請稍後重整或檢查網路。</td></tr>`;
+                } else {
                     renderTable();
-                });
-            }
+                }
 
-            // Summary Stats
-            const topPos = [...fullData].filter(d => d.apr > 0).sort((a,b) => b.apr - a.apr)[0];
-            const topNeg = [...fullData].filter(d => d.apr < 0).sort((a,b) => a.apr - b.apr)[0];
-            const topAvg = [...fullData].sort((a,b) => Math.abs(b.avg3d) - Math.abs(a.avg3d))[0];
-            
-            document.getElementById('top-pos').innerText = topPos ? topPos.apr.toFixed(2) + '%' : '--%';
-            document.getElementById('top-pos-pair').innerText = topPos ? `${topPos.platform} · ${topPos.symbol}` : '--';
-            document.getElementById('top-neg').innerText = topNeg ? topNeg.apr.toFixed(2) + '%' : '--%';
-            document.getElementById('top-neg-pair').innerText = topNeg ? `${topNeg.platform} · ${topNeg.symbol}` : '--';
-            document.getElementById('top-avg').innerText = topAvg ? topAvg.avg3d.toFixed(2) + '%' : '--%';
-            document.getElementById('pair-count').innerText = fullData.length;
-            
-            lastUpdateEl.innerText = '最後同步於: ' + new Date().toLocaleTimeString();
-            lastUpdateEl.classList.remove('loading');
+                // Background update for critical symbols (e.g. Aster ESPORTS)
+                const esports = fullData.find(d => d.symbol === 'ESPORTS' && d.platform === 'Aster');
+                if (esports) {
+                    getTrueHistoryAvg('Aster', 'ESPORTS', esports.apr).then(realAvg => {
+                        esports.avg3d = realAvg;
+                        renderTable();
+                    });
+                }
+
+                // Summary Stats
+                const topPos = [...fullData].filter(d => d.apr > 0).sort((a,b) => b.apr - a.apr)[0];
+                const topNeg = [...fullData].filter(d => d.apr < 0).sort((a,b) => a.apr - b.apr)[0];
+                const topAvg = [...fullData].sort((a,b) => Math.abs(b.avg3d) - Math.abs(a.avg3d))[0];
+                
+                document.getElementById('top-pos').innerText = topPos ? topPos.apr.toFixed(2) + '%' : '--%';
+                document.getElementById('top-pos-pair').innerText = topPos ? `${topPos.platform} · ${topPos.symbol}` : '--';
+                document.getElementById('top-neg').innerText = topNeg ? topNeg.apr.toFixed(2) + '%' : '--%';
+                document.getElementById('top-neg-pair').innerText = topNeg ? `${topNeg.platform} · ${topNeg.symbol}` : '--';
+                document.getElementById('top-avg').innerText = topAvg ? topAvg.avg3d.toFixed(2) + '%' : '--%';
+                document.getElementById('pair-count').innerText = fullData.length;
+                
+                lastUpdateEl.innerText = '最後同步於: ' + new Date().toLocaleTimeString();
+            } catch (err) {
+                console.error('Update failed:', err);
+                lastUpdateEl.innerText = '⚠️ 同步錯誤: ' + err.message;
+            } finally {
+                lastUpdateEl.classList.remove('loading');
+            }
         }
 
         function renderTable() {
