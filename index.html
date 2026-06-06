@@ -47,7 +47,7 @@
             <div class="flex items-center gap-3">
                 <div class="bg-yellow-500 text-black p-2 rounded-lg font-bold text-xl">K</div>
                 <div>
-                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v1.3</span></h1>
+                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v1.4</span></h1>
                     <div id="last-update" class="text-xs text-gray-500">正在掃描全球市場...</div>
                 </div>
             </div>
@@ -156,14 +156,14 @@
         </div>
 
         <footer class="mt-8 text-center text-gray-600 text-[10px]">
-            數據每 60 秒自動同步 • 版本 v1.3 (修復數據校準與快取) • APR 以 8 小時 / 1 小時費率復合計算
+            數據每 60 秒自動同步 • 版本 v1.4 (對接真實歷史 API) • APR 以 8 小時 / 1 小時費率復合計算
         </footer>
     </div>
 
     <script>
         let fullData = [];
         let currentTradeSymbol = '';
-        const CACHE_KEY = 'funding_cache_v1.3'; // 升級版本號強制清除舊髒數據
+        const CACHE_KEY = 'funding_cache_v1.4'; 
         
         function getHistoryCache() {
             try {
@@ -190,6 +190,43 @@
             } catch (e) { return null; }
         }
 
+        // --- Real History Fetcher ---
+        async function getTrueHistoryAvg(platform, symbol, currentApr) {
+            const cache = getHistoryCache();
+            const cacheKey = `${platform}:${symbol}`;
+            const now = Date.now();
+
+            // 如果快取中有 1 小時內抓過的真實歷史，直接用
+            if (cache[cacheKey] && cache[cacheKey].isReal && (now - cache[cacheKey].ts < 3600000)) {
+                return cache[cacheKey].avg;
+            }
+
+            try {
+                let historyRates = [];
+                if (platform === 'Aster') {
+                    const data = await proxyFetch(`https://fapi.asterdex.com/fapi/v1/fundingRate?symbol=${symbol}USDT&limit=18`);
+                    if (data && Array.isArray(data)) historyRates = data.map(i => parseFloat(i.fundingRate));
+                } else if (platform === 'Binance') {
+                    const data = await fetch(`https://fapi.binance.com/fapi/v1/fundingRate?symbol=${symbol}USDT&limit=24`).then(r => r.json());
+                    if (data && Array.isArray(data)) historyRates = data.map(i => parseFloat(i.fundingRate));
+                }
+
+                if (historyRates.length > 0) {
+                    const avgRate = historyRates.reduce((a, b) => a + b, 0) / historyRates.length;
+                    // 根據平台推算年化
+                    const interval = platform === 'Aster' ? (symbol.includes('ESPORT') ? 4 : 8) : 8;
+                    const trueAvgApr = avgRate * (24 / interval) * 365 * 100;
+                    
+                    cache[cacheKey] = { avg: trueAvgApr, ts: now, isReal: true };
+                    saveHistoryCache(cache);
+                    return trueAvgApr;
+                }
+            } catch (e) { console.error('History fetch fail', e); }
+
+            // 抓不到歷史才回退到模擬
+            return calculate3dAvg(currentApr, cacheKey);
+        }
+
         function calculate3dAvg(currentApr, symbol) {
             const cache = getHistoryCache();
             const now = Date.now();
@@ -199,12 +236,9 @@
                 saveHistoryCache(cache);
             } else {
                 const timeDiff = now - cache[symbol].ts;
-                // 如果即時數據與平均數據落差超過 100% 且距離上次更新不到一小時
-                // 可能是之前的 bug 修正後導致的斷層，或者是剛啟動
                 const diff = Math.abs(currentApr - cache[symbol].avg);
                 
                 if (timeDiff > 3600000 || diff > 200) {
-                    // EMA 權重修正：如果差距極大，加速收斂 (用 0.5 權重)；正常情況用 0.3
                     const weight = diff > 300 ? 0.8 : 0.3;
                     cache[symbol].avg = (cache[symbol].avg * (1 - weight)) + (currentApr * weight);
                     cache[symbol].ts = now;
@@ -246,17 +280,18 @@
             try {
                 const res = await fetch('https://fapi.binance.com/fapi/v1/premiumIndex');
                 const data = await res.json();
-                return data.map(item => {
+                return await Promise.all(data.map(async item => {
                     const rate = parseFloat(item.lastFundingRate);
                     const apr = rate * 3 * 365 * 100;
+                    const sym = item.symbol.replace('USDT', '');
                     return {
                         platform: 'Binance',
-                        symbol: item.symbol.replace('USDT', ''),
+                        symbol: sym,
                         apr: apr,
-                        avg3d: calculate3dAvg(apr, `Binance:${item.symbol}`),
+                        avg3d: await getTrueHistoryAvg('Binance', sym, apr),
                         hourly: (rate * 100) / 8
                     };
-                });
+                }));
             } catch (e) { return []; }
         }
 
@@ -324,19 +359,20 @@
                 const intervalMap = {};
                 if (infoRes) infoRes.forEach(i => { intervalMap[i.symbol] = i.fundingIntervalHours || 8; });
                 
-                return premiumRes.map(item => {
+                return await Promise.all(premiumRes.map(async item => {
                     const rate = parseFloat(item.lastFundingRate || 0);
                     const interval = intervalMap[item.symbol] || 8;
                     const apr = rate * (24 / interval) * 365 * 100;
+                    const sym = item.symbol.replace('USDT', '');
                     return {
                         platform: 'Aster',
-                        symbol: item.symbol.replace('USDT', ''),
+                        symbol: sym,
                         apr: apr,
-                        avg3d: calculate3dAvg(apr, `Aster:${item.symbol}`),
+                        avg3d: await getTrueHistoryAvg('Aster', sym, apr),
                         hourly: (rate * 100) / interval
                     };
-                });
-            } catch (e) { return []; }
+                }));
+            } catch (e) { console.error('Aster fail', e); return []; }
         }
 
         async function fetchVariational() {
@@ -369,7 +405,8 @@
                 fetchLighter(), fetchAster(), fetchVariational()
             ]);
 
-            fullData = results.flat().sort((a, b) => b.avg3d - a.avg3d);
+            const flattenedResults = results.flat();
+            fullData = flattenedResults.sort((a, b) => b.avg3d - a.avg3d);
             renderTable();
 
             // Summary Stats
