@@ -47,12 +47,15 @@
             <div class="flex items-center gap-3">
                 <div class="bg-yellow-500 text-black p-2 rounded-lg font-bold text-xl">K</div>
                 <div>
-                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v2.14</span></h1>
+                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v2.17</span></h1>
                     <div id="last-update" class="text-xs text-gray-500">正在掃描全球市場... (API 實時聯動版)</div>
                 </div>
             </div>
             
             <div class="flex flex-wrap items-center gap-4 w-full md:w-auto">
+                <button onclick="lockSystem()" class="flex items-center gap-2 bg-red-900/30 hover:bg-red-800/50 text-red-400 border border-red-500/30 rounded-md px-3 py-2 text-xs font-bold transition-all">
+                    <span>🔒</span> 安全鎖
+                </button>
                 <button onclick="openPositionModal()" class="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white border border-blue-400/30 rounded-md px-3 py-2 text-xs font-bold transition-all shadow-lg shadow-blue-600/20">
                     <span>📊</span> 倉位資訊
                 </button>
@@ -73,6 +76,18 @@
                 </div>
             </div>
         </header>
+
+        <!-- Security Overlay -->
+        <div id="security-overlay" class="hidden fixed inset-0 z-[100] modal-overlay flex items-center justify-center p-4">
+            <div class="bg-[#1e2329] w-full max-w-sm rounded-xl border border-red-500/30 shadow-2xl p-8 text-center">
+                <div class="text-4xl mb-4">🔐</div>
+                <h2 class="text-xl font-bold mb-2">系統已鎖定</h2>
+                <p class="text-xs text-gray-500 mb-6">請輸入管理員金鑰以啟用下單與持倉功能</p>
+                <input type="password" id="manager-key-input" placeholder="Enter Manager Key..." 
+                       class="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-center text-white mb-4 focus:outline-none focus:ring-1 focus:ring-yellow-500">
+                <button onclick="saveManagerKey()" class="w-full bg-yellow-500 hover:bg-yellow-400 text-black py-3 rounded-lg font-bold transition-all">解鎖系統</button>
+            </div>
+        </div>
 
         <!-- Top Alerts -->
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
@@ -280,7 +295,7 @@
         </div>
 
         <footer class="mt-8 text-center text-gray-600 text-[10px]">
-            數據每 60 秒自動同步 • 版本 v2.14 (雙端對沖保護同步版) • APR 以 8 小時 / 1 小時費率復合計算
+            數據每 60 秒自動同步 • 版本 v2.17 (安全金鑰鎖定版) • APR 以 8 小時 / 1 小時費率復合計算
         </footer>
     </div>
 
@@ -289,7 +304,35 @@
         let fullData = [];
         let currentTradeSymbol = '';
         const CACHE_KEY = 'funding_rate_cache_v21'; 
-        const asterIntervalMap = {}; // v2.16 Global map for interval lookup
+        const asterIntervalMap = {}; 
+
+        // --- v2.17 Security Logic ---
+        function getManagerKey() {
+            return localStorage.getItem('kevin_manager_key') || '';
+        }
+
+        function checkSecurity() {
+            const key = getManagerKey();
+            if (!key) {
+                document.getElementById('security-overlay').classList.remove('hidden');
+                return false;
+            }
+            document.getElementById('security-overlay').classList.add('hidden');
+            return true;
+        }
+
+        function saveManagerKey() {
+            const key = document.getElementById('manager-key-input').value;
+            if (key) {
+                localStorage.setItem('kevin_manager_key', key);
+                location.reload();
+            }
+        }
+
+        function lockSystem() {
+            localStorage.removeItem('kevin_manager_key');
+            location.reload();
+        }
         
         function getHistoryCache() {
             try {
@@ -788,7 +831,9 @@
             
             try {
                 console.log("正在請求倉位數據...");
-                const res = await fetch('https://volt-judgment-tones-try.trycloudflare.com/positions?token=kevin_hedge_9988');
+                const key = getManagerKey();
+                const res = await fetch(`https://volt-judgment-tones-try.trycloudflare.com/positions?token=${key}`);
+                if (res.status === 403) throw new Error("金鑰錯誤，請重新解鎖");
                 const data = await res.json();
                 console.log("收到倉位數據:", data);
                 
@@ -928,7 +973,7 @@
                     platform === 'Lighter' ? proxyFetch(`https://mainnet.zklighter.elliot.ai/api/v1/orderbook?symbol=${symbol}&t=${ts}`) : Promise.resolve(null),
                     
                     // 3. Fetch Margin (僅 Modal 開啟時)
-                    (isModalOpen) ? fetch(`https://volt-judgment-tones-try.trycloudflare.com/margin?platform=${platform}&token=kevin_hedge_9988`).then(r => r.json()).catch(() => null) : Promise.resolve(null)
+                    (isModalOpen) ? fetch(`https://volt-judgment-tones-try.trycloudflare.com/margin?platform=${platform}&token=${getManagerKey()}`).then(r => r.json()).catch(() => null) : Promise.resolve(null)
                 ];
 
                 const [mexcData, futureData, marginData] = await Promise.all(promises);
@@ -1013,7 +1058,8 @@
             spinner.classList.remove('hidden');
             errorEl.classList.add('hidden');
 
-            const apiUrl = `https://volt-judgment-tones-try.trycloudflare.com/hedge?token=kevin_hedge_9988`;
+            const key = getManagerKey();
+            const apiUrl = `https://volt-judgment-tones-try.trycloudflare.com/hedge?token=${key}`;
 
             try {
                 const response = await fetch(apiUrl, {
@@ -1087,8 +1133,12 @@
 
         document.getElementById('search').addEventListener('input', renderTable);
         document.getElementById('spot-only').addEventListener('change', renderTable);
-        updateDashboard();
-        setInterval(updateDashboard, 60000);
+        
+        // v2.17 Security Boot
+        if (checkSecurity()) {
+            updateDashboard();
+            setInterval(updateDashboard, 60000);
+        }
     </script>
 </body>
 </html>
