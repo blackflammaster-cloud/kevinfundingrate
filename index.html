@@ -278,9 +278,9 @@
 
         async function fetchBinance() {
             try {
-                const res = await fetch('https://fapi.binance.com/fapi/v1/premiumIndex');
-                const data = await res.json();
-                return await Promise.all(data.map(async item => {
+                const data = await proxyFetch('https://fapi.binance.com/fapi/v1/premiumIndex');
+                if (!data) return [];
+                return data.map(item => {
                     const rate = parseFloat(item.lastFundingRate);
                     const apr = rate * 3 * 365 * 100;
                     const sym = item.symbol.replace('USDT', '');
@@ -288,25 +288,26 @@
                         platform: 'Binance',
                         symbol: sym,
                         apr: apr,
-                        avg3d: await getTrueHistoryAvg('Binance', sym, apr),
+                        avg3d: calculate3dAvg(apr, `Binance:${sym}`),
                         hourly: (rate * 100) / 8
                     };
-                }));
+                });
             } catch (e) { return []; }
         }
 
         async function fetchBybit() {
             try {
-                const res = await fetch('https://api.bybit.com/v5/market/tickers?category=linear');
-                const data = await res.json();
+                const data = await proxyFetch('https://api.bybit.com/v5/market/tickers?category=linear');
+                if (!data?.result?.list) return [];
                 return data.result.list.map(item => {
                     const rate = parseFloat(item.fundingRate);
                     const apr = rate * 3 * 365 * 100;
+                    const sym = item.symbol.replace('USDT', '');
                     return {
                         platform: 'Bybit',
-                        symbol: item.symbol.replace('USDT', ''),
+                        symbol: sym,
                         apr: apr,
-                        avg3d: calculate3dAvg(apr, `Bybit:${item.symbol}`),
+                        avg3d: calculate3dAvg(apr, `Bybit:${sym}`),
                         hourly: (rate * 100) / 8
                     };
                 });
@@ -364,11 +365,20 @@
                     const interval = intervalMap[item.symbol] || 8;
                     const apr = rate * (24 / interval) * 365 * 100;
                     const sym = item.symbol.replace('USDT', '');
+                    
+                    // 只針對 Aster 的 ESPORT 執行真實歷史抓取 (因為老闆最關心這個)
+                    let avg3d;
+                    if (sym === 'ESPORTS') {
+                        avg3d = await getTrueHistoryAvg('Aster', sym, apr);
+                    } else {
+                        avg3d = calculate3dAvg(apr, `Aster:${sym}`);
+                    }
+
                     return {
                         platform: 'Aster',
                         symbol: sym,
                         apr: apr,
-                        avg3d: await getTrueHistoryAvg('Aster', sym, apr),
+                        avg3d: avg3d,
                         hourly: (rate * 100) / interval
                     };
                 }));
@@ -405,8 +415,7 @@
                 fetchLighter(), fetchAster(), fetchVariational()
             ]);
 
-            const flattenedResults = results.flat();
-            fullData = flattenedResults.sort((a, b) => b.avg3d - a.avg3d);
+            fullData = results.flat().sort((a, b) => b.avg3d - a.avg3d);
             renderTable();
 
             // Summary Stats
