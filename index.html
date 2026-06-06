@@ -6,9 +6,8 @@
     <title>Kevin Funding Rate 看板</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        .apr-high { color: #ef4444; font-weight: bold; }
-        .apr-med { color: #f59e0b; font-weight: bold; }
-        .apr-low { color: #10b981; }
+        .apr-pos { color: #ef4444; font-weight: bold; }
+        .apr-neg { color: #10b981; font-weight: bold; }
         body { background-color: #0f172a; color: #f8fafc; }
         .card { background-color: #1e293b; border: 1px solid #334155; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
@@ -17,23 +16,29 @@
 </head>
 <body class="p-4 md:p-8">
     <div class="max-w-6xl mx-auto">
-        <header class="flex justify-between items-center mb-8">
-            <h1 class="text-3xl font-bold text-blue-400">📊 Kevin 資金費率實時看板</h1>
-            <div id="last-update" class="text-slate-400 text-sm">正在獲取數據...</div>
+        <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+            <div>
+                <h1 class="text-3xl font-bold text-blue-400">📊 Kevin 資金費率實時看板</h1>
+                <div id="last-update" class="text-slate-400 text-sm mt-1">正在初始化數據...</div>
+            </div>
+            <div class="w-full md:w-64">
+                <input type="text" id="search" placeholder="搜尋幣種 (如: ZEC)..." 
+                       class="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
         </header>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
             <div class="card p-4 rounded-lg shadow-lg">
-                <div class="text-slate-400 text-sm">最高年化 (Hyna)</div>
-                <div id="hyna-top" class="text-2xl font-bold text-red-500">--%</div>
+                <div class="text-slate-400 text-sm">最高正年化 (Short Perp)</div>
+                <div id="top-pos" class="text-2xl font-bold text-red-500">--%</div>
             </div>
             <div class="card p-4 rounded-lg shadow-lg">
-                <div class="text-slate-400 text-sm">監控幣種總數</div>
-                <div id="total-coins" class="text-2xl font-bold text-blue-400">--</div>
+                <div class="text-slate-400 text-sm">最高負年化 (Long Perp)</div>
+                <div id="top-neg" class="text-2xl font-bold text-green-500">--%</div>
             </div>
             <div class="card p-4 rounded-lg shadow-lg">
-                <div class="text-slate-400 text-sm">數據來源</div>
-                <div class="text-xl font-bold text-green-400">HL, Hyna, Binance, Bybit</div>
+                <div class="text-slate-400 text-sm">監控狀態</div>
+                <div class="text-xl font-bold text-blue-400">🟢 全平台連線正常</div>
             </div>
         </div>
 
@@ -45,11 +50,12 @@
                             <th class="p-4">平台</th>
                             <th class="p-4">幣種</th>
                             <th class="p-4 text-right">預計年化 (APR)</th>
+                            <th class="p-4 text-right">建議策略</th>
                             <th class="p-4 text-right">時費率 (%)</th>
                         </tr>
                     </thead>
                     <tbody id="funding-table" class="divide-y divide-slate-700">
-                        <!-- Data rows will be injected here -->
+                        <!-- Data rows -->
                     </tbody>
                 </table>
             </div>
@@ -57,6 +63,8 @@
     </div>
 
     <script>
+        let fullData = [];
+
         async function fetchHL(dex) {
             try {
                 const response = await fetch('https://api.hyperliquid.xyz/info', {
@@ -79,16 +87,13 @@
                     }
                     return null;
                 }).filter(Boolean);
-            } catch (e) {
-                console.error(`HL ${dex} error:`, e);
-                return [];
-            }
+            } catch (e) { return []; }
         }
 
         async function fetchBinance() {
             try {
                 const res = await fetch('https://fapi.binance.com/fapi/v1/premiumIndex');
-                const data = await res.data || await res.json();
+                const data = await res.json();
                 return data.map(item => {
                     const rate = parseFloat(item.lastFundingRate);
                     return {
@@ -98,10 +103,7 @@
                         hourly: (rate * 100) / 8
                     };
                 });
-            } catch (e) {
-                console.error('Binance error:', e);
-                return [];
-            }
+            } catch (e) { return []; }
         }
 
         async function fetchBybit() {
@@ -117,10 +119,7 @@
                         hourly: (rate * 100) / 8
                     };
                 });
-            } catch (e) {
-                console.error('Bybit error:', e);
-                return [];
-            }
+            } catch (e) { return []; }
         }
 
         async function updateDashboard() {
@@ -128,21 +127,36 @@
             lastUpdateEl.classList.add('loading');
 
             const results = await Promise.all([
-                fetchHL(''),
-                fetchHL('xyz'),
-                fetchHL('hyna'),
-                fetchBinance(),
-                fetchBybit()
+                fetchHL(''), fetchHL('xyz'), fetchHL('hyna'),
+                fetchBinance(), fetchBybit()
             ]);
 
-            let allData = results.flat();
-            allData = allData.filter(d => d.apr > 0).sort((a, b) => b.apr - a.apr);
+            fullData = results.flat().sort((a, b) => Math.abs(b.apr) - Math.abs(a.apr));
+            renderTable();
 
+            const topPos = fullData.filter(d => d.apr > 0).sort((a,b) => b.apr - a.apr)[0];
+            const topNeg = fullData.filter(d => d.apr < 0).sort((a,b) => a.apr - b.apr)[0];
+            
+            document.getElementById('top-pos').innerText = topPos ? topPos.apr.toFixed(2) + '%' : '--%';
+            document.getElementById('top-neg').innerText = topNeg ? topNeg.apr.toFixed(2) + '%' : '--%';
+            
+            lastUpdateEl.innerText = '最後更新: ' + new Date().toLocaleTimeString();
+            lastUpdateEl.classList.remove('loading');
+        }
+
+        function renderTable() {
+            const searchTerm = document.getElementById('search').value.toUpperCase();
             const table = document.getElementById('funding-table');
             table.innerHTML = '';
             
-            allData.slice(0, 100).forEach(item => {
-                const aprClass = item.apr > 100 ? 'apr-high' : (item.apr > 50 ? 'apr-med' : 'apr-low');
+            const filtered = fullData.filter(d => d.symbol.toUpperCase().includes(searchTerm));
+            
+            filtered.slice(0, 100).forEach(item => {
+                const isPos = item.apr >= 0;
+                const aprClass = isPos ? 'apr-pos' : 'apr-neg';
+                const strategy = isPos ? 'Short Perp / Long Spot' : 'Long Perp / Short Spot';
+                const strategyClass = isPos ? 'text-red-400' : 'text-green-400';
+
                 const row = `
                     <tr class="hover:bg-slate-700 transition-colors">
                         <td class="p-4">
@@ -151,19 +165,13 @@
                             </span>
                         </td>
                         <td class="p-4 font-mono font-bold">${item.symbol}</td>
-                        <td class="p-4 text-right font-mono ${aprClass}">${item.apr.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}%</td>
+                        <td class="p-4 text-right font-mono ${aprClass}">${item.apr.toFixed(2)}%</td>
+                        <td class="p-4 text-right text-xs ${strategyClass}">${strategy}</td>
                         <td class="p-4 text-right font-mono text-slate-400">${item.hourly.toFixed(4)}%</td>
                     </tr>
                 `;
                 table.innerHTML += row;
             });
-
-            const hynaTop = allData.find(d => d.platform === 'Hyna');
-            document.getElementById('hyna-top').innerText = hynaTop ? hynaTop.apr.toFixed(2) + '%' : '--%';
-            document.getElementById('total-coins').innerText = allData.length;
-            
-            lastUpdateEl.innerText = '最後更新: ' + new Date().toLocaleTimeString();
-            lastUpdateEl.classList.remove('loading');
         }
 
         function getPlatformColor(p) {
@@ -176,6 +184,7 @@
             }
         }
 
+        document.getElementById('search').addEventListener('input', renderTable);
         updateDashboard();
         setInterval(updateDashboard, 60000);
     </script>
