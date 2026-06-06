@@ -47,7 +47,7 @@
             <div class="flex items-center gap-3">
                 <div class="bg-yellow-500 text-black p-2 rounded-lg font-bold text-xl">K</div>
                 <div>
-                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v1.4</span></h1>
+                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v1.5</span></h1>
                     <div id="last-update" class="text-xs text-gray-500">正在掃描全球市場...</div>
                 </div>
             </div>
@@ -156,14 +156,14 @@
         </div>
 
         <footer class="mt-8 text-center text-gray-600 text-[10px]">
-            數據每 60 秒自動同步 • 版本 v1.4 (對接真實歷史 API) • APR 以 8 小時 / 1 小時費率復合計算
+            數據每 60 秒自動同步 • 版本 v1.5 (優化代理與歷史對接) • APR 以 8 小時 / 1 小時費率復合計算
         </footer>
     </div>
 
     <script>
         let fullData = [];
         let currentTradeSymbol = '';
-        const CACHE_KEY = 'funding_cache_v1.4'; 
+        const CACHE_KEY = 'funding_cache_v1.5'; 
         
         function getHistoryCache() {
             try {
@@ -182,22 +182,44 @@
             }
         }
 
-        async function proxyFetch(url) {
-            try {
-                const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-                const res = await fetch(proxyUrl);
-                return await res.json();
-            } catch (e) { return null; }
+        async function proxyFetch(url, useFallback = true) {
+            const proxies = [
+                `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+                `https://corsproxy.io/?${encodeURIComponent(url)}`,
+                `https://thingproxy.freeboard.io/fetch/${url}`
+            ];
+
+            for (const proxy of proxies) {
+                try {
+                    const res = await fetch(proxy);
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data) return data;
+                    }
+                } catch (e) {
+                    console.warn(`Proxy ${proxy} failed, trying next...`);
+                }
+            }
+
+            if (useFallback) {
+                try {
+                    const res = await fetch(url);
+                    if (res.ok) return await res.json();
+                } catch (e2) {
+                    console.error('All proxies and direct fetch failed for', url);
+                }
+            }
+            return null;
         }
 
-        // --- Real History Fetcher ---
+        // --- Real History Fetcher (Optimized for performance) ---
         async function getTrueHistoryAvg(platform, symbol, currentApr) {
             const cache = getHistoryCache();
             const cacheKey = `${platform}:${symbol}`;
             const now = Date.now();
 
-            // 如果快取中有 1 小時內抓過的真實歷史，直接用
-            if (cache[cacheKey] && cache[cacheKey].isReal && (now - cache[cacheKey].ts < 3600000)) {
+            // 如果快取中有 4 小時內抓過的真實歷史，直接用 (減少請求負擔)
+            if (cache[cacheKey] && cache[cacheKey].isReal && (now - cache[cacheKey].ts < 14400000)) {
                 return cache[cacheKey].avg;
             }
 
@@ -207,13 +229,12 @@
                     const data = await proxyFetch(`https://fapi.asterdex.com/fapi/v1/fundingRate?symbol=${symbol}USDT&limit=18`);
                     if (data && Array.isArray(data)) historyRates = data.map(i => parseFloat(i.fundingRate));
                 } else if (platform === 'Binance') {
-                    const data = await fetch(`https://fapi.binance.com/fapi/v1/fundingRate?symbol=${symbol}USDT&limit=24`).then(r => r.json());
+                    const data = await proxyFetch(`https://fapi.binance.com/fapi/v1/fundingRate?symbol=${symbol}USDT&limit=24`);
                     if (data && Array.isArray(data)) historyRates = data.map(i => parseFloat(i.fundingRate));
                 }
 
                 if (historyRates.length > 0) {
                     const avgRate = historyRates.reduce((a, b) => a + b, 0) / historyRates.length;
-                    // 根據平台推算年化
                     const interval = platform === 'Aster' ? (symbol.includes('ESPORT') ? 4 : 8) : 8;
                     const trueAvgApr = avgRate * (24 / interval) * 365 * 100;
                     
@@ -223,7 +244,6 @@
                 }
             } catch (e) { console.error('History fetch fail', e); }
 
-            // 抓不到歷史才回退到模擬
             return calculate3dAvg(currentApr, cacheKey);
         }
 
@@ -256,6 +276,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ type: 'metaAndAssetCtxs', dex: dex || undefined })
                 });
+                if (!response.ok) return [];
                 const [meta, contexts] = await response.json();
                 const platformName = dex === 'hyna' ? 'Hyna' : (dex === 'xyz' ? 'TradeXYZ' : 'Hyperliquid');
                 return meta.universe.map((asset, i) => {
@@ -278,8 +299,9 @@
 
         async function fetchBinance() {
             try {
+                // Binance often works better with direct fetch if CORS allows, otherwise use proxy
                 const data = await proxyFetch('https://fapi.binance.com/fapi/v1/premiumIndex');
-                if (!data) return [];
+                if (!data || !Array.isArray(data)) return [];
                 return data.map(item => {
                     const rate = parseFloat(item.lastFundingRate);
                     const apr = rate * 3 * 365 * 100;
@@ -360,29 +382,23 @@
                 const intervalMap = {};
                 if (infoRes) infoRes.forEach(i => { intervalMap[i.symbol] = i.fundingIntervalHours || 8; });
                 
-                return await Promise.all(premiumRes.map(async item => {
+                // Use regular map for instant display, don't await true history inside here to avoid blocking
+                return premiumRes.map(item => {
                     const rate = parseFloat(item.lastFundingRate || 0);
                     const interval = intervalMap[item.symbol] || 8;
                     const apr = rate * (24 / interval) * 365 * 100;
                     const sym = item.symbol.replace('USDT', '');
                     
-                    // 只針對 Aster 的 ESPORT 執行真實歷史抓取 (因為老闆最關心這個)
-                    let avg3d;
-                    if (sym === 'ESPORTS') {
-                        avg3d = await getTrueHistoryAvg('Aster', sym, apr);
-                    } else {
-                        avg3d = calculate3dAvg(apr, `Aster:${sym}`);
-                    }
-
+                    // Simple avg for now, top results will be updated later
                     return {
                         platform: 'Aster',
                         symbol: sym,
                         apr: apr,
-                        avg3d: avg3d,
+                        avg3d: calculate3dAvg(apr, `Aster:${sym}`),
                         hourly: (rate * 100) / interval
                     };
-                }));
-            } catch (e) { console.error('Aster fail', e); return []; }
+                });
+            } catch (e) { return []; }
         }
 
         async function fetchVariational() {
@@ -393,7 +409,7 @@
                     const rate = parseFloat(item.funding_rate);
                     const interval = item.funding_interval_s || 28800;
                     const apr = rate * (86400 / interval) * 365 * 100;
-                    if (Math.abs(apr) > 1000) return null;
+                    if (Math.abs(apr) > 5000) return null;
                     return {
                         platform: 'Variation',
                         symbol: item.ticker,
@@ -409,14 +425,30 @@
             const lastUpdateEl = document.getElementById('last-update');
             lastUpdateEl.classList.add('loading');
 
-            const results = await Promise.all([
+            // Concurrent fetching for speed
+            const results = await Promise.allSettled([
                 fetchHL(''), fetchHL('xyz'), fetchHL('hyna'),
                 fetchBinance(), fetchBybit(), fetchAevo(),
                 fetchLighter(), fetchAster(), fetchVariational()
             ]);
 
-            fullData = results.flat().sort((a, b) => b.avg3d - a.avg3d);
+            fullData = results
+                .filter(r => r.status === 'fulfilled')
+                .map(r => r.value)
+                .flat()
+                .filter(Boolean)
+                .sort((a, b) => b.apr - a.apr); // 恢復老闆要求的正到負排序
+            
             renderTable();
+
+            // Background update for critical symbols (e.g. Aster ESPORTS)
+            const esports = fullData.find(d => d.symbol === 'ESPORTS' && d.platform === 'Aster');
+            if (esports) {
+                getTrueHistoryAvg('Aster', 'ESPORTS', esports.apr).then(realAvg => {
+                    esports.avg3d = realAvg;
+                    renderTable();
+                });
+            }
 
             // Summary Stats
             const topPos = [...fullData].filter(d => d.apr > 0).sort((a,b) => b.apr - a.apr)[0];
@@ -437,17 +469,18 @@
         function renderTable() {
             const searchTerm = document.getElementById('search').value.toUpperCase();
             const table = document.getElementById('funding-table');
-            table.innerHTML = '';
+            const currentHTML = table.innerHTML;
+            
             const filtered = fullData.filter(d => 
                 d.symbol.toUpperCase().includes(searchTerm) || 
                 d.platform.toUpperCase().includes(searchTerm)
             );
             
-            filtered.slice(0, 100).forEach(item => {
+            const newContent = filtered.slice(0, 100).map(item => {
                 const isPos = item.apr >= 0;
                 const aprClass = isPos ? 'apr-pos' : 'apr-neg';
                 const avgClass = item.avg3d >= 0 ? 'text-red-300' : 'text-green-300';
-                const row = `
+                return `
                     <tr class="table-row transition-all border-b border-gray-800">
                         <td class="p-4"><span class="badge ${getPlatformColor(item.platform)}">${item.platform}</span></td>
                         <td class="p-4 font-bold mono text-sm">${item.symbol}</td>
@@ -461,8 +494,11 @@
                         </td>
                     </tr>
                 `;
-                table.innerHTML += row;
-            });
+            }).join('');
+            
+            if (currentHTML !== newContent) {
+                table.innerHTML = newContent;
+            }
         }
 
         function getPlatformColor(p) {
