@@ -768,9 +768,12 @@
                 }
 
                 // Render Balances
+                const mexcBal = (data.balances && data.balances.mexc) ? data.balances.mexc.toFixed(2) : "0.00";
+                const bnbBal = (data.balances && data.balances.binance) ? data.balances.binance.toFixed(2) : "0.00";
+                
                 balanceEl.innerHTML = `
-                    <div class="text-right"><p class="text-gray-500 uppercase">MEXC</p><p class="font-bold text-yellow-500">${data.balances.mexc.toFixed(2)} U</p></div>
-                    <div class="text-right"><p class="text-gray-500 uppercase">Binance</p><p class="font-bold text-yellow-500">${data.balances.binance.toFixed(2)} U</p></div>
+                    <div class="text-right"><p class="text-gray-500 uppercase">MEXC</p><p class="font-bold text-yellow-500">${mexcBal} U</p></div>
+                    <div class="text-right"><p class="text-gray-500 uppercase">Binance</p><p class="font-bold text-yellow-500">${bnbBal} U</p></div>
                 `;
 
                 // Render Positions Table
