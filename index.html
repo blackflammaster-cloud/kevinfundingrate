@@ -425,8 +425,11 @@
 
         function updateCommand() {
             const amount = document.getElementById('trade-amount').value || 0;
-            const cleanSymbol = currentTradeSymbol.split('(')[0]; // 移除 Lighter 的後綴
-            document.getElementById('cmd-output').innerText = `node hedge_executor.js ${cleanSymbol} ${amount}`;
+            const cleanSymbol = currentTradeSymbol.split('(')[0].replace('USDT', '');
+            
+            // 邏輯優化：如果是 ESPORT 或在特定平台，提醒老闆使用跨平台模式
+            const cmd = `node hedge_executor.js ${cleanSymbol} ${amount}`;
+            document.getElementById('cmd-output').innerText = cmd;
         }
 
         function copyCommand() {
