@@ -47,7 +47,7 @@
             <div class="flex items-center gap-3">
                 <div class="bg-yellow-500 text-black p-2 rounded-lg font-bold text-xl">K</div>
                 <div>
-                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v2.8.2</span></h1>
+                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v2.8.3</span></h1>
                     <div id="last-update" class="text-xs text-gray-500">正在掃描全球市場... (API 實時聯動版)</div>
                 </div>
             </div>
@@ -252,7 +252,7 @@
         </div>
 
         <footer class="mt-8 text-center text-gray-600 text-[10px]">
-            數據每 60 秒自動同步 • 版本 v2.8.2 (實時監控終端版) • APR 以 8 小時 / 1 小時費率復合計算
+            數據每 60 秒自動同步 • 版本 v2.8.3 (實時盈虧校準版) • APR 以 8 小時 / 1 小時費率復合計算
         </footer>
     </div>
 
@@ -795,13 +795,16 @@
                 data.positions.forEach(p => {
                     const spreadColor = p.spreadPercent >= 0 ? 'text-green-400' : 'text-red-400';
                     const pnlColor = p.totalPnl >= 0 ? 'text-green-400' : 'text-red-400';
+                    const spotPnlColor = p.spot.unrealizedPnl >= 0 ? 'text-green-400/70' : 'text-red-400/70';
+                    const futurePnlColor = p.future.unrealizedPnl >= 0 ? 'text-green-400/70' : 'text-red-400/70';
                     
                     html += `
                         <tr class="table-row">
                             <td class="py-4 font-bold text-lg mono">${p.symbol}</td>
                             <td class="py-4">
                                 <div class="font-bold mono text-gray-200">${p.spot.amount.toFixed(4)}</div>
-                                <div class="text-[10px] text-gray-500">$${p.spot.price.toFixed(4)} (≈$${p.spot.value.toFixed(2)})</div>
+                                <div class="text-[10px] text-gray-500">Cost: $${p.spot.avgCost > 0 ? p.spot.avgCost.toFixed(4) : '--'} | Price: $${p.spot.price.toFixed(4)}</div>
+                                <div class="text-[9px] ${spotPnlColor}">PNL: $${p.spot.unrealizedPnl.toFixed(2)}</div>
                             </td>
                             <td class="py-4">
                                 <div class="flex items-center gap-2">
@@ -809,6 +812,7 @@
                                     <span class="font-bold mono ${p.future.amount < 0 ? 'text-red-400' : 'text-green-400'}">${p.future.amount.toFixed(4)}</span>
                                 </div>
                                 <div class="text-[10px] text-gray-300 font-bold uppercase">Value: $${p.future.value.toFixed(2)}</div>
+                                <div class="text-[9px] ${futurePnlColor}">PNL: $${p.future.unrealizedPnl.toFixed(2)}</div>
                             </td>
                             <td class="py-4 text-right">
                                 <div class="font-bold mono text-green-400">${(p.funding.rate * 100).toFixed(4)}%</div>
@@ -819,8 +823,8 @@
                                 <div class="text-[10px] text-gray-500">$${p.spread.toFixed(4)}</div>
                             </td>
                             <td class="py-4 text-right">
-                                <div class="font-bold mono ${pnlColor}">$${p.totalPnl.toFixed(2)}</div>
-                                <div class="text-[9px] text-gray-500 uppercase">Future: $${p.future.unrealizedPnl.toFixed(2)}</div>
+                                <div class="font-bold mono ${pnlColor} text-lg">$${p.totalPnl.toFixed(2)}</div>
+                                <div class="text-[9px] text-gray-500 uppercase">Hedge Total</div>
                             </td>
                         </tr>
                     `;
