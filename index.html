@@ -47,7 +47,7 @@
             <div class="flex items-center gap-3">
                 <div class="bg-yellow-500 text-black p-2 rounded-lg font-bold text-xl">K</div>
                 <div>
-                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v2.17</span></h1>
+                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v2.18</span></h1>
                     <div id="last-update" class="text-xs text-gray-500">正在掃描全球市場... (API 實時聯動版)</div>
                 </div>
             </div>
@@ -82,7 +82,7 @@
             <div class="bg-[#1e2329] w-full max-w-sm rounded-xl border border-red-500/30 shadow-2xl p-8 text-center">
                 <div class="text-4xl mb-4">🔐</div>
                 <h2 class="text-xl font-bold mb-2">系統已鎖定</h2>
-                <p class="text-xs text-gray-500 mb-6">請輸入管理員金鑰以啟用下單與持倉功能</p>
+                <p class="text-xs text-gray-500 mb-6">請輸入管理員金鑰以啟用功能 (僅限本次會話)</p>
                 <input type="password" id="manager-key-input" placeholder="Enter Manager Key..." 
                        class="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-center text-white mb-4 focus:outline-none focus:ring-1 focus:ring-yellow-500">
                 <button onclick="saveManagerKey()" class="w-full bg-yellow-500 hover:bg-yellow-400 text-black py-3 rounded-lg font-bold transition-all">解鎖系統</button>
@@ -295,7 +295,7 @@
         </div>
 
         <footer class="mt-8 text-center text-gray-600 text-[10px]">
-            數據每 60 秒自動同步 • 版本 v2.17 (安全金鑰鎖定版) • APR 以 8 小時 / 1 小時費率復合計算
+            數據每 60 秒自動同步 • 版本 v2.18 (Session 級動態鎖定版) • APR 以 8 小時 / 1 小時費率復合計算
         </footer>
     </div>
 
@@ -306,9 +306,9 @@
         const CACHE_KEY = 'funding_rate_cache_v21'; 
         const asterIntervalMap = {}; 
 
-        // --- v2.17 Security Logic ---
+        // --- v2.18 Security Logic (SessionStorage) ---
         function getManagerKey() {
-            return localStorage.getItem('kevin_manager_key') || '';
+            return sessionStorage.getItem('kevin_manager_key') || '';
         }
 
         function checkSecurity() {
@@ -324,13 +324,13 @@
         function saveManagerKey() {
             const key = document.getElementById('manager-key-input').value;
             if (key) {
-                localStorage.setItem('kevin_manager_key', key);
+                sessionStorage.setItem('kevin_manager_key', key);
                 location.reload();
             }
         }
 
         function lockSystem() {
-            localStorage.removeItem('kevin_manager_key');
+            sessionStorage.removeItem('kevin_manager_key');
             location.reload();
         }
         
