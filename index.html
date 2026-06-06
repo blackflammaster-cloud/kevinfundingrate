@@ -293,6 +293,10 @@
                     const rate = parseFloat(item.funding_rate);
                     const interval = item.funding_interval_s || 28800;
                     const apr = rate * (86400 / interval) * 365 * 100;
+                    
+                    // 數據篩選邏輯：過濾掉 Variation 異常數據 (APR > 1000% 或 APR < -1000% 視為異常)
+                    if (Math.abs(apr) > 1000) return null;
+                    
                     return {
                         platform: 'Variation',
                         symbol: item.ticker,
@@ -300,7 +304,7 @@
                         avg3d: calculate3dAvg(apr, `Variation:${item.ticker}`),
                         hourly: (rate * 100) / (interval / 3600)
                     };
-                });
+                }).filter(Boolean);
             } catch (e) { return []; }
         }
 
