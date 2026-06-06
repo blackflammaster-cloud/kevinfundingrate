@@ -184,20 +184,31 @@
 
         async function proxyFetch(url, useFallback = true) {
             const proxies = [
-                `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
                 `https://corsproxy.io/?${encodeURIComponent(url)}`,
+                `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
                 `https://thingproxy.freeboard.io/fetch/${url}`
             ];
 
             for (const proxy of proxies) {
                 try {
-                    const res = await fetch(proxy);
+                    console.log(`Trying proxy: ${proxy}`);
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+                    
+                    const res = await fetch(proxy, { signal: controller.signal });
+                    clearTimeout(timeoutId);
+                    
                     if (res.ok) {
                         const data = await res.json();
-                        if (data) return data;
+                        if (data) {
+                            console.log(`Proxy success: ${proxy}`);
+                            return data;
+                        }
+                    } else {
+                        console.warn(`Proxy returned status ${res.status}: ${proxy}`);
                     }
                 } catch (e) {
-                    console.warn(`Proxy ${proxy} failed, trying next...`);
+                    console.warn(`Proxy failed or timed out: ${proxy}`, e.message);
                 }
             }
 
