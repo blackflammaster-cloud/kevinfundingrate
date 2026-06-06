@@ -47,7 +47,7 @@
             <div class="flex items-center gap-3">
                 <div class="bg-yellow-500 text-black p-2 rounded-lg font-bold text-xl">K</div>
                 <div>
-                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v2.5</span></h1>
+                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v2.7.2</span></h1>
                     <div id="last-update" class="text-xs text-gray-500">正在掃描全球市場... (API 實時聯動版)</div>
                 </div>
             </div>
@@ -252,7 +252,7 @@
         </div>
 
         <footer class="mt-8 text-center text-gray-600 text-[10px]">
-            數據每 60 秒自動同步 • 版本 v2.5 (平台精確對位版) • APR 以 8 小時 / 1 小時費率復合計算
+            數據每 60 秒自動同步 • 版本 v2.7.2 (實時監控終端版) • APR 以 8 小時 / 1 小時費率復合計算
         </footer>
     </div>
 
@@ -744,11 +744,28 @@
             const balanceEl = document.getElementById('account-balances');
             const lastUpdateEl = document.getElementById('pos-last-update');
             
+            // 顯示 Loading 狀態
+            if (content.innerHTML.trim() === "" || content.innerHTML.includes("獲取倉位失敗")) {
+                content.innerHTML = `
+                    <div class="flex flex-col items-center justify-center p-20 space-y-4">
+                        <div class="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                        <p class="text-gray-400 font-bold">正在穿透雲端獲取實時倉位...</p>
+                        <p class="text-[10px] text-gray-600 uppercase tracking-widest">正在掃描 MEXC, BINANCE & ASTER</p>
+                    </div>
+                `;
+            }
+            
             try {
+                console.log("正在請求倉位數據...");
                 const res = await fetch('https://volt-judgment-tones-try.trycloudflare.com/positions?token=kevin_hedge_9988');
                 const data = await res.json();
+                console.log("收到倉位數據:", data);
                 
                 if (data.error) throw new Error(data.error);
+                if (!data.positions || data.positions.length === 0) {
+                    content.innerHTML = `<div class="p-20 text-center text-gray-500">目前沒有檢測到任何對沖持倉 📭</div>`;
+                    return;
+                }
 
                 // Render Balances
                 balanceEl.innerHTML = `
