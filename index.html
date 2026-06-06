@@ -156,14 +156,14 @@
         </div>
 
         <footer class="mt-8 text-center text-gray-600 text-[10px]">
-            數據每 60 秒自動同步 • 版本 v1.5 (優化代理與歷史對接) • APR 以 8 小時 / 1 小時費率復合計算
+            數據每 60 秒自動同步 • 版本 v1.6 (穩定性徹底修復) • APR 以 8 小時 / 1 小時費率復合計算
         </footer>
     </div>
 
     <script>
         let fullData = [];
         let currentTradeSymbol = '';
-        const CACHE_KEY = 'funding_cache_v1.5'; 
+        const CACHE_KEY = 'funding_rate_cache_v16'; 
         
         function getHistoryCache() {
             try {
@@ -199,10 +199,15 @@
                     clearTimeout(timeoutId);
                     
                     if (res.ok) {
-                        const data = await res.json();
-                        if (data) {
-                            console.log(`Proxy success: ${proxy}`);
-                            return data;
+                        const text = await res.text();
+                        try {
+                            const data = JSON.parse(text);
+                            if (data) {
+                                console.log(`Proxy success: ${proxy}`);
+                                return data;
+                            }
+                        } catch (e) {
+                            console.warn(`Proxy ${proxy} returned non-JSON content`);
                         }
                     } else {
                         console.warn(`Proxy returned status ${res.status}: ${proxy}`);
@@ -215,7 +220,14 @@
             if (useFallback) {
                 try {
                     const res = await fetch(url);
-                    if (res.ok) return await res.json();
+                    if (res.ok) {
+                        const text = await res.text();
+                        try {
+                            return JSON.parse(text);
+                        } catch (e) {
+                            console.error('Direct fetch returned non-JSON content for', url);
+                        }
+                    }
                 } catch (e2) {
                     console.error('All proxies and direct fetch failed for', url);
                 }
@@ -435,6 +447,12 @@
         async function updateDashboard() {
             const lastUpdateEl = document.getElementById('last-update');
             const table = document.getElementById('funding-table');
+            
+            // 首次載入 Loading 狀態
+            if (fullData.length === 0) {
+                table.innerHTML = `<tr><td colspan="6" class="p-20 text-center"><div class="flex flex-col items-center gap-4"><div class="loading text-yellow-500 font-bold text-lg">正在獲取全球 9 大平台即時數據...</div><div class="text-xs text-gray-500">掃描 Binance, Bybit, Hyperliquid, Aster...</div></div></td></tr>`;
+            }
+            
             lastUpdateEl.classList.add('loading');
             
             console.log('Starting update...');
@@ -447,12 +465,13 @@
                     fetchLighter(), fetchAster(), fetchVariational()
                 ]);
 
+                // 提取數據並嚴格按照 APR 由高到低排序
                 fullData = results
                     .filter(r => r.status === 'fulfilled')
                     .map(r => r.value)
                     .flat()
                     .filter(Boolean)
-                    .sort((a, b) => b.apr - a.apr);
+                    .sort((a, b) => b.avg3d - a.avg3d); // 修正：依老闆要求改為 3 日平均排序
                 
                 console.log('Data fetched:', fullData.length, 'items');
                 
@@ -467,6 +486,8 @@
                 if (esports) {
                     getTrueHistoryAvg('Aster', 'ESPORTS', esports.apr).then(realAvg => {
                         esports.avg3d = realAvg;
+                        // 數據更新後重新排序並渲染，確保位置正確
+                        fullData.sort((a, b) => b.avg3d - a.avg3d);
                         renderTable();
                     });
                 }
