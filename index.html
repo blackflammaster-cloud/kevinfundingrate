@@ -47,7 +47,7 @@
             <div class="flex items-center gap-3">
                 <div class="bg-yellow-500 text-black p-2 rounded-lg font-bold text-xl">K</div>
                 <div>
-                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v2.20</span></h1>
+                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v2.21</span></h1>
                     <div id="last-update" class="text-xs text-gray-500">正在掃描全球市場... (API 實時聯動版)</div>
                 </div>
             </div>
@@ -296,7 +296,7 @@
         </div>
 
         <footer class="mt-8 text-center text-gray-600 text-[10px]">
-            數據每 60 秒自動同步 • 版本 v2.20 (基差實時顯示版) • APR 以 8 小時 / 1 小時費率復合計算
+            數據每 60 秒自動同步 • 版本 v2.21 (基差匹配優化版) • APR 以 8 小時 / 1 小時費率復合計算
         </footer>
     </div>
 
@@ -689,8 +689,8 @@
             } catch (e) { return []; }
         }
 
-        // --- v2.20 Price Cache for Basis ---
-        const priceCache = { mexc: {} };
+        // --- v2.21 Price Cache for Basis ---
+        const priceCache = { mexc: {}, lighter: {} };
 
         async function updateDashboard() {
             const lastUpdateEl = document.getElementById('last-update');
@@ -706,12 +706,13 @@
             console.log('Starting update...');
 
             try {
-                // Concurrent fetching for speed
+                // v2.21 Concurrent fetching with Lighter Price Details
                 const results = await Promise.allSettled([
                     fetchHL(''), fetchHL('xyz'), fetchHL('hyna'),
                     fetchBinance(), fetchBybit(), fetchAevo(),
                     fetchLighter(), fetchAster(), fetchVariational(),
-                    proxyFetch('https://api.mexc.com/api/v3/ticker/price') 
+                    proxyFetch('https://api.mexc.com/api/v3/ticker/price'),
+                    proxyFetch('https://mainnet.zklighter.elliot.ai/api/v1/orderBookDetails')
                 ]);
 
                 // 處理 MEXC 價格
@@ -724,6 +725,14 @@
                     });
                 }
 
+                // 處理 Lighter 價格
+                const lighterDetails = results[10]?.status === 'fulfilled' ? results[10].value?.order_book_details : [];
+                if (Array.isArray(lighterDetails)) {
+                    lighterDetails.forEach(d => {
+                        priceCache.lighter[d.symbol] = parseFloat(d.last_trade_price);
+                    });
+                }
+
                 // 提取數據並嚴格執行鐵律
                 fullData = results.slice(0, 9)
                     .filter(r => r.status === 'fulfilled')
@@ -732,11 +741,23 @@
                     .filter(Boolean)
                     .filter(d => d.apr > 0 && d.apr <= 1500) 
                     .map(d => {
-                        const sPrice = priceCache.mexc[d.symbol] || 0;
-                        const fPrice = d.lastPrice || 0;
+                        // v2.21: 智能符號匹配 (處理 1000x 等前綴)
+                        let baseSymbol = d.symbol.replace('1000', '');
+                        let multiplier = d.symbol.startsWith('1000') ? 1000 : 1;
+                        
+                        let sPrice = priceCache.mexc[baseSymbol] || priceCache.mexc[d.symbol] || 0;
+                        let fPrice = d.lastPrice || 0;
+                        
+                        // Lighter 補位
+                        if (d.platform === 'Lighter' && fPrice === 0) {
+                            fPrice = priceCache.lighter[d.symbol] || 0;
+                        }
+
                         let spread = 0;
                         if (sPrice > 0 && fPrice > 0) {
-                            spread = ((fPrice - sPrice) / sPrice) * 100;
+                            // 如果是 1000x 標的，現貨價要乘以 1000 進行對比
+                            const adjustedSpot = sPrice * multiplier;
+                            spread = ((fPrice - adjustedSpot) / adjustedSpot) * 100;
                         }
                         return { ...d, spread };
                     })
