@@ -132,7 +132,7 @@
             <div class="bg-[#1e2329] w-full max-w-5xl max-h-[90vh] rounded-xl border border-gray-700 shadow-2xl overflow-hidden flex flex-col">
                 <div class="p-6 border-b border-gray-800 flex justify-between items-center">
                     <h3 class="text-xl font-bold flex items-center gap-3">
-                        <span class="text-blue-500">📊</span> 實時倉位與資費監控
+                        <span class="text-blue-500">📊</span> 實時倉位與資費監控 <span class="text-[10px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded">v2.8</span>
                         <span id="pos-refresh-timer" class="text-[10px] font-normal text-gray-500 bg-gray-800 px-2 py-1 rounded ml-4 uppercase tracking-widest">10s 自動刷新</span>
                     </h3>
                     <div class="flex items-center gap-4">
@@ -783,10 +783,10 @@
                             <tr class="text-gray-500 text-[10px] uppercase border-b border-gray-800">
                                 <th class="pb-2">幣種</th>
                                 <th class="pb-2">現貨持倉 (MEXC)</th>
-                                <th class="pb-2">合約持倉 (ASTER/BN)</th>
+                                <th class="pb-2">合約持倉 (Value)</th>
                                 <th class="pb-2 text-right">實時資費 / APR</th>
                                 <th class="pb-2 text-right">即時基差 (Spread)</th>
-                                <th class="pb-2 text-right">未實現盈虧</th>
+                                <th class="pb-2 text-right">總盈虧 (Total PNL)</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-800/50">
@@ -794,7 +794,7 @@
 
                 data.positions.forEach(p => {
                     const spreadColor = p.spreadPercent >= 0 ? 'text-green-400' : 'text-red-400';
-                    const pnlColor = p.future.unrealizedPnl >= 0 ? 'text-green-400' : 'text-red-400';
+                    const pnlColor = p.totalPnl >= 0 ? 'text-green-400' : 'text-red-400';
                     
                     html += `
                         <tr class="table-row">
@@ -808,7 +808,7 @@
                                     <span class="badge ${getPlatformColor(p.future.platform)}">${p.future.platform}</span>
                                     <span class="font-bold mono ${p.future.amount < 0 ? 'text-red-400' : 'text-green-400'}">${p.future.amount.toFixed(4)}</span>
                                 </div>
-                                <div class="text-[10px] text-gray-500">Entry: $${p.future.entryPrice.toFixed(4)} | Mark: $${p.future.currentPrice.toFixed(4)}</div>
+                                <div class="text-[10px] text-gray-300 font-bold uppercase">Value: $${p.future.value.toFixed(2)}</div>
                             </td>
                             <td class="py-4 text-right">
                                 <div class="font-bold mono text-green-400">${(p.funding.rate * 100).toFixed(4)}%</div>
@@ -819,7 +819,8 @@
                                 <div class="text-[10px] text-gray-500">$${p.spread.toFixed(4)}</div>
                             </td>
                             <td class="py-4 text-right">
-                                <div class="font-bold mono ${pnlColor}">$${p.future.unrealizedPnl.toFixed(2)}</div>
+                                <div class="font-bold mono ${pnlColor}">$${p.totalPnl.toFixed(2)}</div>
+                                <div class="text-[9px] text-gray-500 uppercase">Future: $${p.future.unrealizedPnl.toFixed(2)}</div>
                             </td>
                         </tr>
                     `;
