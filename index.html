@@ -47,7 +47,7 @@
             <div class="flex items-center gap-3">
                 <div class="bg-yellow-500 text-black p-2 rounded-lg font-bold text-xl">K</div>
                 <div>
-                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v2.11</span></h1>
+                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v2.12</span></h1>
                     <div id="last-update" class="text-xs text-gray-500">正在掃描全球市場... (API 實時聯動版)</div>
                 </div>
             </div>
@@ -224,6 +224,17 @@
                             </div>
                         </div>
 
+                        <div id="margin-check-box" class="bg-blue-500/10 p-3 rounded-lg border border-blue-500/20 flex justify-between items-center">
+                            <div class="flex flex-col">
+                                <span class="text-[10px] text-blue-400 uppercase tracking-tighter">合約端可用保證金</span>
+                                <span id="modal-margin-value" class="text-sm font-bold text-white">正在檢查...</span>
+                            </div>
+                            <div class="text-right">
+                                <span class="text-[10px] text-gray-500 uppercase">預計所需</span>
+                                <span id="modal-margin-required" class="block text-xs font-bold text-gray-400">-- USDT</span>
+                            </div>
+                        </div>
+
                         <div id="modal-error" class="hidden text-[10px] text-red-400 bg-red-400/10 p-2 rounded border border-red-400/20"></div>
 
                         <!-- 成交回報面板 -->
@@ -269,7 +280,7 @@
         </div>
 
         <footer class="mt-8 text-center text-gray-600 text-[10px]">
-            數據每 60 秒自動同步 • 版本 v2.11 (實時行情校準版) • APR 以 8 小時 / 1 小時費率復合計算
+            數據每 60 秒自動同步 • 版本 v2.12 (開倉熔斷預警版) • APR 以 8 小時 / 1 小時費率復合計算
         </footer>
     </div>
 
@@ -876,6 +887,11 @@
             document.getElementById('trade-modal').classList.remove('hidden');
             document.getElementById('modal-error').classList.add('hidden');
             
+            // v2.12: Margin Pre-flight
+            document.getElementById('modal-margin-value').innerText = "正在檢查...";
+            document.getElementById('modal-margin-value').className = "text-sm font-bold text-white";
+            document.getElementById('confirm-trade-btn').disabled = true;
+
             // v2.10 Reset SL/TP
             document.getElementById('trade-sl').value = '';
             document.getElementById('trade-tp').value = '';
@@ -897,6 +913,35 @@
                 let spotPrice = 0;
                 let futurePrice = 0;
                 const ts = Date.now();
+
+                // v2.12: Fetch Margin (只在 Modal 開啟時)
+                if (document.getElementById('trade-modal').classList.contains('hidden') === false) {
+                    const marginData = await fetch(`https://volt-judgment-tones-try.trycloudflare.com/margin?platform=${platform}&token=kevin_hedge_9988`).then(r => r.json()).catch(() => null);
+                    if (marginData && marginData.available !== undefined) {
+                        const available = parseFloat(marginData.available);
+                        const amount = parseFloat(document.getElementById('trade-amount').value || 0);
+                        const required = amount / 5; // 假設 5x
+                        
+                        document.getElementById('modal-margin-value').innerText = `$${available.toFixed(2)}`;
+                        document.getElementById('modal-margin-required').innerText = `$${required.toFixed(2)} USDT`;
+                        
+                        const btn = document.getElementById('confirm-trade-btn');
+                        const errorEl = document.getElementById('modal-error');
+
+                        if (available < required) {
+                            document.getElementById('modal-margin-value').className = "text-sm font-bold text-red-400";
+                            errorEl.innerText = `⚠️ 保證金不足！當前 $${available.toFixed(2)} < 需求 $${required.toFixed(2)}。下單按鈕已暫時禁用，以防止單邊成交。`;
+                            errorEl.classList.remove('hidden');
+                            btn.disabled = true;
+                            btn.classList.add('opacity-50', 'cursor-not-allowed');
+                        } else {
+                            document.getElementById('modal-margin-value').className = "text-sm font-bold text-green-400";
+                            errorEl.classList.add('hidden');
+                            btn.disabled = false;
+                            btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                        }
+                    }
+                }
 
                 // 1. Fetch MEXC Spot Price (v2.11: with cache buster)
                 const mexcData = await proxyFetch(`https://api.mexc.com/api/v3/ticker/price?symbol=${symbol}USDT&t=${ts}`);
