@@ -47,7 +47,7 @@
             <div class="flex items-center gap-3">
                 <div class="bg-yellow-500 text-black p-2 rounded-lg font-bold text-xl">K</div>
                 <div>
-                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v2.21</span></h1>
+                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v2.22</span></h1>
                     <div id="last-update" class="text-xs text-gray-500">正在掃描全球市場... (API 實時聯動版)</div>
                 </div>
             </div>
@@ -296,7 +296,7 @@
         </div>
 
         <footer class="mt-8 text-center text-gray-600 text-[10px]">
-            數據每 60 秒自動同步 • 版本 v2.21 (基差匹配優化版) • APR 以 8 小時 / 1 小時費率復合計算
+            數據每 60 秒自動同步 • 版本 v2.22 (Lighter 數據屏蔽版) • APR 以 8 小時 / 1 小時費率復合計算
         </footer>
     </div>
 
@@ -706,13 +706,13 @@
             console.log('Starting update...');
 
             try {
-                // v2.21 Concurrent fetching with Lighter Price Details
+                // v2.22 Concurrent fetching (Lighter removed per boss request)
                 const results = await Promise.allSettled([
                     fetchHL(''), fetchHL('xyz'), fetchHL('hyna'),
                     fetchBinance(), fetchBybit(), fetchAevo(),
-                    fetchLighter(), fetchAster(), fetchVariational(),
-                    proxyFetch('https://api.mexc.com/api/v3/ticker/price'),
-                    proxyFetch('https://mainnet.zklighter.elliot.ai/api/v1/orderBookDetails')
+                    Promise.resolve([]), // Lighter placeholder (fetchLighter removed)
+                    fetchAster(), fetchVariational(),
+                    proxyFetch('https://api.mexc.com/api/v3/ticker/price')
                 ]);
 
                 // 處理 MEXC 價格
@@ -739,6 +739,7 @@
                     .map(r => r.value)
                     .flat()
                     .filter(Boolean)
+                    .filter(d => d.platform !== 'Lighter') // v2.22 雙重保險屏蔽 Lighter
                     .filter(d => d.apr > 0 && d.apr <= 1500) 
                     .map(d => {
                         // v2.21: 智能符號匹配 (處理 1000x 等前綴)
