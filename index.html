@@ -47,7 +47,7 @@
             <div class="flex items-center gap-3">
                 <div class="bg-yellow-500 text-black p-2 rounded-lg font-bold text-xl">K</div>
                 <div>
-                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v2.18</span></h1>
+                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v2.19</span></h1>
                     <div id="last-update" class="text-xs text-gray-500">正在掃描全球市場... (API 實時聯動版)</div>
                 </div>
             </div>
@@ -295,7 +295,7 @@
         </div>
 
         <footer class="mt-8 text-center text-gray-600 text-[10px]">
-            數據每 60 秒自動同步 • 版本 v2.18 (Session 級動態鎖定版) • APR 以 8 小時 / 1 小時費率復合計算
+            數據每 60 秒自動同步 • 版本 v2.19 (全平台實時定價優化版) • APR 以 8 小時 / 1 小時費率復合計算
         </footer>
     </div>
 
@@ -962,15 +962,23 @@
                 const errorEl = document.getElementById('modal-error');
                 const isModalOpen = !document.getElementById('trade-modal').classList.contains('hidden');
 
-                // v2.13: 併發請求 (Concurrent Requests) 以極速提升響應
+                // v2.19: 擴展全平台定價支持
                 const promises = [
-                    // 1. Fetch MEXC Spot Price
+                    // 1. Fetch MEXC Spot Price (Always USDT)
                     proxyFetch(`https://api.mexc.com/api/v3/ticker/price?symbol=${symbol}USDT&t=${ts}`),
                     
                     // 2. Fetch Future Price based on platform
                     platform === 'Aster' ? proxyFetch(`https://fapi.asterdex.com/fapi/v1/ticker/price?symbol=${symbol}USDT&t=${ts}`) :
                     platform === 'Binance' ? proxyFetch(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${symbol}USDT&t=${ts}`) :
-                    platform === 'Lighter' ? proxyFetch(`https://mainnet.zklighter.elliot.ai/api/v1/orderbook?symbol=${symbol}&t=${ts}`) : Promise.resolve(null),
+                    platform === 'Bybit' ? proxyFetch(`https://api.bybit.com/v5/market/tickers?category=linear&symbol=${symbol}USDT`) :
+                    platform === 'Aevo' ? proxyFetch(`https://api.aevo.xyz/ticker?instrument_name=${symbol}-PERP`) :
+                    platform === 'Hyperliquid' ? proxyFetch('https://api.hyperliquid.xyz/info', {
+                        method: 'POST', 
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ type: 'l2Book', coin: symbol })
+                    }) :
+                    platform === 'Lighter' ? proxyFetch(`https://mainnet.zklighter.elliot.ai/api/v1/orderBookDetails`) :
+                    Promise.resolve(null),
                     
                     // 3. Fetch Margin (僅 Modal 開啟時)
                     (isModalOpen) ? fetch(`https://volt-judgment-tones-try.trycloudflare.com/margin?platform=${platform}&token=${getManagerKey()}`).then(r => r.json()).catch(() => null) : Promise.resolve(null)
@@ -984,10 +992,20 @@
 
                 if (mexcData?.price) spotPrice = parseFloat(mexcData.price);
                 
-                if (platform === 'Lighter') {
-                    if (futureData?.asks?.[0]?.[0]) futurePrice = parseFloat(futureData.asks[0][0]);
-                } else {
+                // v2.19: 精細化各平台價格解析
+                if (platform === 'Aster' || platform === 'Binance') {
                     if (futureData?.price) futurePrice = parseFloat(futureData.price);
+                } else if (platform === 'Bybit') {
+                    if (futureData?.result?.list?.[0]?.lastPrice) futurePrice = parseFloat(futureData.result.list[0].lastPrice);
+                } else if (platform === 'Aevo') {
+                    if (futureData?.last_price) futurePrice = parseFloat(futureData.last_price);
+                } else if (platform === 'Hyperliquid') {
+                    if (futureData?.levels?.[0]?.[0]?.px) futurePrice = parseFloat(futureData.levels[0][0].px);
+                } else if (platform === 'Lighter') {
+                    // Lighter 返回所有詳情，從中過濾
+                    const tickers = futureData?.order_book_details || [];
+                    const t = tickers.find(t => t.symbol === symbol);
+                    if (t?.last_trade_price) futurePrice = parseFloat(t.last_trade_price);
                 }
 
                 if (spotPrice) document.getElementById('modal-spot-price').innerText = spotPrice.toFixed(6);
