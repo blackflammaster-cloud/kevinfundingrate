@@ -47,7 +47,7 @@
             <div class="flex items-center gap-3">
                 <div class="bg-yellow-500 text-black p-2 rounded-lg font-bold text-xl">K</div>
                 <div>
-                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v2.0</span></h1>
+                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v2.1</span></h1>
                     <div id="last-update" class="text-xs text-gray-500">正在掃描全球市場...</div>
                 </div>
             </div>
@@ -159,14 +159,14 @@
         </div>
 
         <footer class="mt-8 text-center text-gray-600 text-[10px]">
-            數據每 60 秒自動同步 • 版本 v2.0 (鐵律合規版) • APR 以 8 小時 / 1 小時費率復合計算
+            數據每 60 秒自動同步 • 版本 v2.1 (全平台深度追溯版) • APR 以 8 小時 / 1 小時費率復合計算
         </footer>
     </div>
 
     <script>
         let fullData = [];
         let currentTradeSymbol = '';
-        const CACHE_KEY = 'funding_rate_cache_v16'; 
+        const CACHE_KEY = 'funding_rate_cache_v21'; 
         
         function getHistoryCache() {
             try {
@@ -286,9 +286,28 @@
                     historyUrl = `https://fapi.binance.com/fapi/v1/fundingRate?symbol=${symbol}USDT&limit=24`;
                 } else if (platform === 'Bybit') {
                     historyUrl = `https://api.bybit.com/v5/market/funding/history?category=linear&symbol=${symbol}USDT&limit=24`;
+                } else if (platform === 'Aevo') {
+                    // Aevo 需要後綴 -PERP
+                    const aevoSym = symbol.endsWith('-PERP') ? symbol : `${symbol}-PERP`;
+                    historyUrl = `https://api.aevo.xyz/funding-history?instrument_name=${aevoSym}&limit=24`;
+                } else if (['Hyperliquid', 'Hyna', 'TradeXYZ'].includes(platform)) {
+                    // HL 使用 POST，proxyFetch 需要支援
+                    const hlData = await fetch('https://api.hyperliquid.xyz/info', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            type: 'fundingHistory', 
+                            coin: symbol, 
+                            startTime: Date.now() - 3 * 24 * 3600 * 1000 
+                        })
+                    }).then(r => r.json()).catch(() => null);
+                    
+                    if (hlData && Array.isArray(hlData)) {
+                        historyRates = hlData.map(i => parseFloat(i.fundingRate));
+                    }
                 }
 
-                if (historyUrl) {
+                if (historyUrl && historyRates.length === 0) {
                     const data = await proxyFetch(historyUrl);
                     if (data) {
                         if (platform === 'Aster' && Array.isArray(data)) {
@@ -297,14 +316,19 @@
                             historyRates = data.map(i => parseFloat(i.fundingRate));
                         } else if (platform === 'Bybit' && data.result?.list) {
                             historyRates = data.result.list.map(i => parseFloat(i.fundingRate));
+                        } else if (platform === 'Aevo' && data.funding_history) {
+                            historyRates = data.funding_history.map(i => parseFloat(i[2]));
                         }
                     }
                 }
 
                 if (historyRates.length > 0) {
                     const avgRate = historyRates.reduce((a, b) => a + b, 0) / historyRates.length;
-                    // 週期換算：Aster ESPORT 是 4h，其他預設 8h
-                    const interval = (platform === 'Aster' && symbol.includes('ESPORT')) ? 4 : 8;
+                    // 週期換算：Aster ESPORT 是 4h，HL/Aevo 是 1h，其他預設 8h
+                    let interval = 8;
+                    if (platform === 'Aster' && symbol.includes('ESPORT')) interval = 4;
+                    if (['Hyperliquid', 'Hyna', 'TradeXYZ', 'Aevo'].includes(platform)) interval = 1;
+                    
                     const trueAvgApr = avgRate * (24 / interval) * 365 * 100;
                     
                     cache[cacheKey] = { avg: trueAvgApr, ts: now, isReal: true };
