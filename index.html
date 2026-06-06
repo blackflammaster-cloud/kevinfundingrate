@@ -297,20 +297,32 @@
 
         async function fetchAster() {
             try {
-                const data = await proxyFetch('https://fapi.asterdex.com/fapi/v3/fundingInfo');
-                if (!data) return [];
-                return data.map(item => {
-                    const rate = parseFloat(item.lastFundingRate || item.interestRate || 0);
-                    const apr = rate * 3 * 365 * 100;
+                const [infoRes, premiumRes] = await Promise.all([
+                    proxyFetch('https://fapi.asterdex.com/fapi/v3/fundingInfo'),
+                    proxyFetch('https://fapi.asterdex.com/fapi/v1/premiumIndex')
+                ]);
+
+                if (!premiumRes) return [];
+
+                // 建立區間字典
+                const intervalMap = {};
+                if (infoRes) {
+                    infoRes.forEach(i => { intervalMap[i.symbol] = i.fundingIntervalHours || 8; });
+                }
+
+                return premiumRes.map(item => {
+                    const rate = parseFloat(item.lastFundingRate || 0);
+                    const interval = intervalMap[item.symbol] || 8;
+                    const apr = rate * (24 / interval) * 365 * 100;
                     return {
                         platform: 'Aster',
                         symbol: item.symbol.replace('USDT', ''),
                         apr: apr,
                         avg3d: calculate3dAvg(apr, `Aster:${item.symbol}`),
-                        hourly: (rate * 100) / 8
+                        hourly: (rate * 100) / interval
                     };
                 });
-            } catch (e) { return []; }
+            } catch (e) { console.error('Aster fail', e); return []; }
         }
 
         async function fetchVariational() {
