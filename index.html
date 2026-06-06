@@ -289,6 +289,7 @@
         let fullData = [];
         let currentTradeSymbol = '';
         const CACHE_KEY = 'funding_rate_cache_v21'; 
+        const asterIntervalMap = {}; // v2.16 Global map for interval lookup
         
         function getHistoryCache() {
             try {
@@ -446,10 +447,10 @@
 
                 if (historyRates.length > 0) {
                     const avgRate = historyRates.reduce((a, b) => a + b, 0) / historyRates.length;
-                    // 週期換算：Aster ESPORT 是 4h，HL/Aevo 是 1h，其他預設 8h
+                    // v2.16: Correct intervals for 1h/8h/4h
                     let interval = 8;
-                    if (platform === 'Aster' && symbol.includes('ESPORT')) interval = 4;
-                    if (['Hyperliquid', 'Hyna', 'TradeXYZ', 'Aevo'].includes(platform)) interval = 1;
+                    if (['Hyperliquid', 'Hyna', 'TradeXYZ', 'Aevo', 'Lighter', 'Variational'].includes(platform)) interval = 1;
+                    if (platform === 'Aster') interval = asterIntervalMap[symbol] || 8;
                     
                     const trueAvgApr = avgRate * (24 / interval) * 365 * 100;
                     
@@ -557,13 +558,14 @@
                 if (!data) return [];
                 return data.map(item => {
                     const rate = parseFloat(item.funding_rate);
-                    const apr = rate * 3 * 365 * 100;
+                    // Aevo is 1h settlement
+                    const apr = rate * 24 * 365 * 100;
                     return {
                         platform: 'Aevo',
                         symbol: item.instrument_name,
                         apr: apr,
                         avg3d: calculate3dAvg(apr, `Aevo:${item.instrument_name}`),
-                        hourly: (rate * 100) / 8
+                        hourly: rate * 100
                     };
                 });
             } catch (e) { return []; }
@@ -575,13 +577,14 @@
                 if (!data?.funding_rates) return [];
                 return data.funding_rates.map(item => {
                     const rate = parseFloat(item.rate);
-                    const apr = rate * 3 * 365 * 100;
+                    // Lighter is 1h settlement
+                    const apr = rate * 24 * 365 * 100;
                     return {
                         platform: 'Lighter',
                         symbol: item.symbol,
                         apr: apr,
                         avg3d: calculate3dAvg(apr, `Lighter:${item.symbol}:${item.exchange}`),
-                        hourly: (rate * 100) / 8
+                        hourly: rate * 100
                     };
                 });
             } catch (e) { return []; }
@@ -594,13 +597,12 @@
                     proxyFetch('https://fapi.asterdex.com/fapi/v1/premiumIndex')
                 ]);
                 if (!premiumRes) return [];
-                const intervalMap = {};
-                if (infoRes) infoRes.forEach(i => { intervalMap[i.symbol] = i.fundingIntervalHours || 8; });
+                if (infoRes) infoRes.forEach(i => { asterIntervalMap[i.symbol] = i.fundingIntervalHours || 8; });
                 
                 // Use regular map for instant display, don't await true history inside here to avoid blocking
                 return premiumRes.map(item => {
                     const rate = parseFloat(item.lastFundingRate || 0);
-                    const interval = intervalMap[item.symbol] || 8;
+                    const interval = asterIntervalMap[item.symbol] || 8;
                     const apr = rate * (24 / interval) * 365 * 100;
                     const sym = item.symbol.replace('USDT', '');
                     
