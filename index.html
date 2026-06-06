@@ -47,7 +47,7 @@
             <div class="flex items-center gap-3">
                 <div class="bg-yellow-500 text-black p-2 rounded-lg font-bold text-xl">K</div>
                 <div>
-                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v1.8</span></h1>
+                    <h1 class="text-xl font-bold">Funding Arbitrage <span class="text-yellow-500">PRO v2.0</span></h1>
                     <div id="last-update" class="text-xs text-gray-500">正在掃描全球市場...</div>
                 </div>
             </div>
@@ -75,9 +75,12 @@
                 <p id="top-pos-pair" class="text-[10px] text-gray-400 mt-1">--</p>
             </div>
             <div class="bg-[#181a20] p-4 rounded-lg border border-gray-800">
-                <p class="text-xs text-gray-500 mb-1">Max Long APR (負費率)</p>
-                <p id="top-neg" class="text-xl font-bold text-[#0ecb81]">--%</p>
-                <p id="top-neg-pair" class="text-[10px] text-gray-400 mt-1">--</p>
+                <p class="text-xs text-gray-500 mb-1">系統監控狀態</p>
+                <div class="flex items-center gap-2 mt-2">
+                    <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                    <span class="text-sm font-bold text-green-400">1500% 熔斷已開啟</span>
+                </div>
+                <p class="text-[10px] text-gray-400 mt-1">依據記憶鐵律過濾異常</p>
             </div>
             <div class="bg-[#181a20] p-4 rounded-lg border border-gray-800">
                 <p class="text-xs text-gray-500 mb-1">3日平均最高</p>
@@ -156,7 +159,7 @@
         </div>
 
         <footer class="mt-8 text-center text-gray-600 text-[10px]">
-            數據每 60 秒自動同步 • 版本 v1.8 (Top 100 歷史校準版) • APR 以 8 小時 / 1 小時費率復合計算
+            數據每 60 秒自動同步 • 版本 v2.0 (鐵律合規版) • APR 以 8 小時 / 1 小時費率復合計算
         </footer>
     </div>
 
@@ -508,33 +511,31 @@
                     fetchLighter(), fetchAster(), fetchVariational()
                 ]);
 
-                // 提取數據並嚴格按照 APR 由高到低排序
+                // 提取數據並嚴格執行鐵律：1. 嚴禁負費率 2. 1500% 暴力熔斷
                 fullData = results
                     .filter(r => r.status === 'fulfilled')
                     .map(r => r.value)
                     .flat()
                     .filter(Boolean)
-                    .sort((a, b) => b.avg3d - a.avg3d); // 修正：依老闆要求改為 3 日平均排序
+                    .filter(d => d.apr > 0 && d.apr <= 1500) // 核心禁令：過濾負費率與 >1500% 的異常值
+                    .sort((a, b) => b.avg3d - a.avg3d);
                 
-                console.log('Data fetched:', fullData.length, 'items');
+                console.log('Data fetched (filtered by Iron Rules):', fullData.length, 'items');
                 
                 if (fullData.length === 0) {
-                    table.innerHTML = `<tr><td colspan="6" class="p-10 text-center text-gray-500 italic">⚠️ 數據抓取失敗，可能是代理伺服器過載，請稍後重整或檢查網路。</td></tr>`;
+                    table.innerHTML = `<tr><td colspan="6" class="p-10 text-center text-gray-500 italic">⚠️ 數據抓取失敗或全部觸發熔斷，請稍後重整。</td></tr>`;
                 } else {
                     renderTable();
-                    // 非同步啟動 Top 50 歷史校準
+                    // 非同步啟動 Top 100 歷史校準
                     updateTopHistory();
                 }
 
                 // Summary Stats
-                const topPos = [...fullData].filter(d => d.apr > 0).sort((a,b) => b.apr - a.apr)[0];
-                const topNeg = [...fullData].filter(d => d.apr < 0).sort((a,b) => a.apr - b.apr)[0];
-                const topAvg = [...fullData].sort((a,b) => Math.abs(b.avg3d) - Math.abs(a.avg3d))[0];
+                const topPos = [...fullData].sort((a,b) => b.apr - a.apr)[0];
+                const topAvg = [...fullData].sort((a,b) => b.avg3d - a.avg3d)[0];
                 
                 document.getElementById('top-pos').innerText = topPos ? topPos.apr.toFixed(2) + '%' : '--%';
                 document.getElementById('top-pos-pair').innerText = topPos ? `${topPos.platform} · ${topPos.symbol}` : '--';
-                document.getElementById('top-neg').innerText = topNeg ? topNeg.apr.toFixed(2) + '%' : '--%';
-                document.getElementById('top-neg-pair').innerText = topNeg ? `${topNeg.platform} · ${topNeg.symbol}` : '--';
                 document.getElementById('top-avg').innerText = topAvg ? topAvg.avg3d.toFixed(2) + '%' : '--%';
                 document.getElementById('pair-count').innerText = fullData.length;
                 
